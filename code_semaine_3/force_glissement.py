@@ -65,7 +65,7 @@ for i in range(pas + 1):
     temps.append(i * pas_temps) # pas * time_step
     if i < pas:
         surface[:] = np.roll(surface, shift=-1, axis=1)
-        pente_x[:] = np.roll(pente_x, shift=-1, axis=1)
+        pente_x[:] = np.roll(pente_x, shift=-1, axis=1) #on déplace la pente avec la surface
 #%%
 #tracé
 fig_def, ax1 = plt.subplots(figsize=(10, 5))
@@ -93,8 +93,7 @@ u_plot = (u_cut + offset)
 #tracé des surfaces
 ax1.plot(x, h_cut , 'k', label='Solide rigide', lw=1.5)
 ax1.plot(x, u_cut, 'b-', label='Solide déformable', lw=1.5)
-ax1.set(xlabel="Position x (m)", ylabel="Hauteur (µm)", 
-        title=f"Profil de contact (y={y_max}, Pas numéro {pas})")
+ax1.set(xlabel="Position x (m)", ylabel="Hauteur (µm)", title=f"Profil de contact (y={y_max}, Pas numéro {pas})")
 
 #tracé de la pression
 ax2 = ax1.twinx()
@@ -120,8 +119,7 @@ with open(chemin_txt, "w") as f:
 #tracé de fx et mu
 fig_fx, ax_fx = plt.subplots(figsize=(8, 4))
 ax_fx.plot(temps, historique_ft, 'r-', lw=1.5)
-ax_fx.set(xlabel="Temps (s)", ylabel="Force de frottement Fx (N)",
-          title=f"Évolution du frottement (Nombre de pas totaux = {pas})")
+ax_fx.set(xlabel="Temps (s)", ylabel="Force de frottement Fx (N)", title=f"Évolution du frottement (Nombre de pas totaux = {pas})")
 ax_fx.grid()
 
 #on ajoute mu sur la même courbe car c'est juste un coef de fx
