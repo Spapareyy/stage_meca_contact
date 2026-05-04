@@ -108,7 +108,9 @@ u_plot = (u_cut + offset)
 #tracé des surfaces
 ax1.plot(x, h_cut , 'k', label='Solide rigide', lw=1.5)
 ax1.plot(x, u_plot, 'b-', label='Solide déformable', lw=1.5)
+
 ax1.set(xlabel="Position x (m)", ylabel="Hauteur (µm)",title=f"Profil de contact (y={y_max}, Pas numéro {pas})")
+ax1.set(xlabel="Position x (m)", ylabel="Hauteur (µm)", title=f"Profil de contact (y={y_max}, Pas numéro {pas})")
 
 #tracé de la pression
 ax2 = ax1.twinx()
