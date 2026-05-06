@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-N=200
+N=250
 if len(sys.argv) > 3:
     load = float(sys.argv[1])
     suff_load = sys.argv[1]
@@ -13,9 +13,9 @@ if len(sys.argv) > 3:
     pas = int(sys.argv[3])
     suff_pas = sys.argv[3]
 else: #si execution via spyder
-    load = 1e-5 
+    load = 2e-5 
     hurst = 0.7
-    pas = 300    #changer valeur pour décaler de x pas
+    pas = 250    #changer valeur pour décaler de x pas
     suff_load = str(load)
     suff_hurst = str(hurst)
     suff_pas = str(pas)
@@ -51,13 +51,13 @@ model = tm.Model(tm.model_type.basic_2d, [L, L], [N, N])
 model.E= 1.
 nu=0.5
 model.nu = nu
-V_cible=0.1 #pour avoir la meme vitesse peu importe la valeur de N
+V_cible=0.3 #pour avoir la meme vitesse peu importe la valeur de N
 pas_temps=(L/N)/V_cible
 
 G_i = np.array([3.0])   # si on a k=0.1 , et Einf=1 on a dE=9 et E=3*G avec nu=0.5 donc G=dE/3=3
 tau_i = np.array([0.1]) # taurelax= k*tau_fluage avec k=0.1 et tau_fluage =1 , taurelax=0.1
 
-solver = tm.MaxwellViscoelastic(model, surface, 1e-8,
+solver = tm.MaxwellViscoelastic(model, surface, 1e-9,
                                 time_step=pas_temps,
                                 shear_moduli=G_i,
                                 characteristic_times=tau_i)
@@ -93,8 +93,8 @@ for i in range(pas + 1):
 fig_def, ax1 = plt.subplots(figsize=(10, 5))
 plt.axvline(x=(pas/N )%1,ymin=0,ymax=1)
 #ces 4 lignes servent a obtenir l'endroit avec la pression la plus élevée 
-y_max = np.argmax(np.max(model.traction, axis=1)) #on prend la ligne ou la pression est maximale
-y_max=128  #ici on choisit n'importe quel endroit si on ne veut pas la pression maximale
+y_max = np.argmax(np.max(model.traction, axis=1)) #on prend la ligne ou la pression est maximale 
+#ymax=128 #ici on choisit n'importe quel endroit si on ne veut pas la pression maximale
 h_cut = surface[y_max, :] #on prend la ligne de la surface rugueuse qui correspond à cette pression
 u_cut = model.displacement[y_max, :] #on prend le deplacement de la surface deformee qui correspond a cette pression
 p_cut = model.traction[y_max, :] #on prend le profil de pression de la ligne qui correspond a cette pression
@@ -105,8 +105,10 @@ p_cut = model.traction[y_max, :] #on prend le profil de pression de la ligne qui
 #on cherche le point de pression max sur la ligne du ymax
 # et on force le solide déformable à toucher la surface exactement à cet endroit.
 x_contact = np.argmax(p_cut) # on trouve cette fois le i,j qui correspond a la pression max
-offset = h_cut[x_contact] - u_cut[x_contact]
-u_plot = (u_cut + offset) 
+
+offset = np.max(h_cut - u_cut)
+
+u_plot = u_cut + offset
 
 ax1.plot(x, h_cut , 'k', label='Solide rigide', lw=1.5)
 ax1.plot(x, u_plot, 'b-', label='Solide déformable', lw=1.5)
