@@ -216,7 +216,7 @@ ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson ")
 #ajout de l'asymptote sur le graphique
 ax_fx.axhline(y=ft_asymptote, color='b', linestyle='-.', label=f"Asymptote régime permanent (F = {ft_asymptote:.2e})")
 
-ax_fx.set(xlabel="Temps (s)", ylabel="Force de frottement Fx (N)",title=f"Évolution du frottement (Nombre de pas totaux = {pas})")
+ax_fx.set(xlabel="Temps (s)", ylabel="Force de frottement Fx",title=f"Évolution du frottement (Nombre de pas totaux = {pas})")
 ax_fx.grid()
 ax_fx.legend()
 
