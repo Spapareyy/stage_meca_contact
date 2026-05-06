@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 import os
-N=250
+
+N=200
 if len(sys.argv) > 3:
     load = float(sys.argv[1])
     suff_load = sys.argv[1]
@@ -14,7 +15,7 @@ if len(sys.argv) > 3:
 else: #si execution via spyder
     load = 1e-5 
     hurst = 0.7
-    pas = 600    #changer valeur pour décaler de x pas
+    pas = 300    #changer valeur pour décaler de x pas
     suff_load = str(load)
     suff_hurst = str(hurst)
     suff_pas = str(pas)
@@ -24,9 +25,9 @@ os.makedirs("resultats", exist_ok=True)
 
 L =1.
 spectrum = tm.Isopowerlaw2D()
-spectrum.q0 = 20
-spectrum.q1 = 20
-spectrum.q2 = 80
+spectrum.q0 = 10
+spectrum.q1 = 10
+spectrum.q2 = 70
 spectrum.hurst = hurst
 generator = tm.SurfaceGeneratorFilter2D([N, N])
 generator.spectrum = spectrum
@@ -36,19 +37,27 @@ h0=1e-6 #ampltiude des bosses
 surface *= h0 / tm.Statistics2D.computeRMSHeights(surface)
 
 x = np.linspace(0, L, N, endpoint=False)
-profil =h0 *np.cos(2*np.pi*x/L)  #profil 1D du cos
-surface = np.tile(profil, (N, 1))   #conversion en 2D
-surface -= np.mean(surface)       #on centre autour de 0
+#calcul du psd
+C_q_2D = tm.Statistics2D.computePowerSpectrum(surface)
+
+#vecteurs d'ondes
+freqs_x = np.fft.fftfreq(N, d=L/N) * 2 * np.pi  #fréquences spatiales pour l'axe x
+freqs_y = np.fft.rfftfreq(N, d=L/N) * 2 * np.pi  # rfftfreq crée la dimension N//2 + 1,  fréquences spatiale pour l'axe y
+qx, qy = np.meshgrid(freqs_x, freqs_y, indexing='ij')  #grille 2D des fréquences spatiales
+q_norm = np.sqrt(qx**2 + qy**2) #fréquence spatiale absolue 
+
 
 model = tm.Model(tm.model_type.basic_2d, [L, L], [N, N])
 model.E= 1.
 nu=0.5
 model.nu = nu
-pas_temps=0.03
+V_cible=0.1 #pour avoir la meme vitesse peu importe la valeur de N
+pas_temps=(L/N)/V_cible
 
-G_i = np.array([0.12, 0.08, 0.05])
-tau_i = np.array([0.1, 1.0, 10.0])
-solver = tm.MaxwellViscoelastic(model, surface, 1e-10,
+G_i = np.array([3.0])   # si on a k=0.1 , et Einf=1 on a dE=9 et E=3*G avec nu=0.5 donc G=dE/3=3
+tau_i = np.array([0.1]) # taurelax= k*tau_fluage avec k=0.1 et tau_fluage =1 , taurelax=0.1
+
+solver = tm.MaxwellViscoelastic(model, surface, 1e-8,
                                 time_step=pas_temps,
                                 shear_moduli=G_i,
                                 characteristic_times=tau_i)
@@ -63,9 +72,6 @@ temps = []
 #on calcule la pente initiale (gradient selon l'axe x)
 #on ne s'interesse qu'a la pente selon x
 pente_y, pente_x = np.gradient(surface, dx)
-
-pente_rms = np.sqrt(np.mean(pente_x**2 + pente_y**2))
-variance_pentes = pente_rms**2
 
 #boucle
 #on boucle exactement 'pas + 1' fois pour s'arrêter sur le pas demandé
@@ -83,7 +89,7 @@ for i in range(pas + 1):
         surface[:] = np.roll(surface, shift=-1, axis=1)
         pente_x[:] = np.roll(pente_x, shift=-1, axis=1) #on décale la pente avec la surface
 #%%
-#tracé
+##### tracé des surfaces  #####
 fig_def, ax1 = plt.subplots(figsize=(10, 5))
 plt.axvline(x=(pas/N )%1,ymin=0,ymax=1)
 #ces 4 lignes servent a obtenir l'endroit avec la pression la plus élevée 
@@ -96,16 +102,12 @@ p_cut = model.traction[y_max, :] #on prend le profil de pression de la ligne qui
 #h_cut : profil de la surface rigide sur la ligne choisie
 #u_cut : déplacement vertical de la surface déformée 
 
-
-
 #on cherche le point de pression max sur la ligne du ymax
 # et on force le solide déformable à toucher la surface exactement à cet endroit.
 x_contact = np.argmax(p_cut) # on trouve cette fois le i,j qui correspond a la pression max
 offset = h_cut[x_contact] - u_cut[x_contact]
 u_plot = (u_cut + offset) 
 
-
-#tracé des surfaces
 ax1.plot(x, h_cut , 'k', label='Solide rigide', lw=1.5)
 ax1.plot(x, u_plot, 'b-', label='Solide déformable', lw=1.5)
 
@@ -124,7 +126,8 @@ if len(sys.argv) > 3:
     plt.close(fig_def)
 else:
     plt.show()
-    
+ 
+
 #calcul du coef de frottement
 fn = load * L * L
 mu_final = ft / fn
@@ -136,21 +139,10 @@ with open(chemin_txt, "w") as f:
 
 
 
-#partie analytique (persson)
-
-q = 2 * np.pi / L         #vecteur d'onde des bosses
+####### méthode persson #######
 V = (L / N) / pas_temps   #vitesse de glissement (distance d'un pas / temps d'un pas)
-omega = q * V             #fréquence d'excitation vue par le solide déformable (rad/s)
-
-
-#calcul du module de perte (G'') (dissipation viscoélastique)
-#formule mathématique d'un modèle de maxwell à plusieurs branches
-G_second = np.sum(G_i * (omega * tau_i) / (1 + (omega * tau_i)**2))
-
-#E* = 2*G / (1 - nu) pour la conversion de module
-E_perte = 2 * G_second / (1 - nu)
+omega = qx * V             #fréquence d'excitation vue par le solide déformable (rad/s)
 Surface_totale = L * L
-
 
 #calcul de la force de frottement théorique
 F_analytique_t = []
@@ -159,7 +151,6 @@ for i, t in enumerate(temps):
     reponse_totale = 0
     for j in range(len(G_i)):
         g, tau = G_i[j], tau_i[j]
-        
         #g correspond a E (inf)- E(0)
         terme_stationnaire = (g * 1j * omega * tau) / (1 + 1j * omega * tau) #dapres equation 37
         
@@ -170,15 +161,17 @@ for i, t in enumerate(temps):
         reponse_totale += reponse_t  #on additionne les réponses de chaque branche
     
     E_perte_t = 2 * np.imag(reponse_totale) / (1 - nu) #on garde uniquement la partie imaginaire 
+    contribution = qx*q_norm * C_q_2D * E_perte_t  #q*cos(phi)= qnorm*(qx/qnorm)= qnorm*qx
+    integrale_q = np.sum(contribution)*2  #*2 car tamaas calcul le PSD pour la moitié des fréquences
     
     #on récupère l'aire réelle mesurée par Tamaas à cet instant précis
     A_reel_t = historique_A_reel[i]
     
     #on calcule le pourcentage de contact, entre 0 et 1
-    P_q_t = A_reel_t / Surface_totale
+    P_q_t = A_reel_t / Surface_totale  #comme p_q_t dépend de q et de t on a décidé de pas l'inclure dans l'equation de f_t
     
     #on applique la formule de l'équation 18 (avec le 1/2 et cos(0)=1)
-    f_t = 0.5* P_q_t * E_perte_t * Surface_totale *(q**2)* ((h0)**2)  #q**2*C(q)
+    f_t = 0.5*  integrale_q * Surface_totale* P_q_t
     F_analytique_t.append(f_t)
 
 F_analytique_t = np.array(F_analytique_t)
@@ -186,12 +179,40 @@ F_analytique_t = np.array(F_analytique_t)
 
 
 
+##### méthode carbone putignano #####
+k = 0.1
+tau = 1.0  
+vit = (L / N) / pas_temps  
+
+#la rugosité recule sur l'axe y dans le np.roll (axis=1, shift=-1), donc la vitesse relative est -vit
+omega_car = -qy * vit  
+
+#terme devant le G
+M_qv = k + ((1 - k)/(1 - 1j *omega_car *tau))
+
+solver_stat = tm.PolonskyKeerRey(model, surface, 1e-7)
+solver_stat.solve(load)
+
+#on modifie le G 
+Green = model.operators['westergaard_neumann']['influence'][:]
+model.operators['westergaard_neumann']['influence'][:] = Green * M_qv
+
+#résolution avec le nouveau G
+solver_stat.solve(load)
+
+#calcul de la force asymptotique
+ft_asymptote = np.sum(model.traction * pente_x) * dS
+print(f"Force asymptotique (Carbone-Putignano) : {ft_asymptote:.4e}")
+
+
 
 #tracé de fx et mu
 fig_fx, ax_fx = plt.subplots(figsize=(8, 4))
 ax_fx.plot(temps, historique_ft, 'r-', lw=1.5, label="Simulation Tamaas")
-
 ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson (Dynamique)")
+
+# Ajout de l'asymptote sur le graphique
+ax_fx.axhline(y=ft_asymptote, color='b', linestyle='-.', lw=1.5, label=f"Asymptote régime permanent (F = {ft_asymptote:.2e} N)")
 
 ax_fx.set(xlabel="Temps (s)", ylabel="Force de frottement Fx (N)",title=f"Évolution du frottement (Nombre de pas totaux = {pas})")
 ax_fx.grid()
