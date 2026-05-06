@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-N=250
+N=200
 if len(sys.argv) > 3:
     load = float(sys.argv[1])
     suff_load = sys.argv[1]
@@ -43,7 +43,7 @@ C_q_2D = tm.Statistics2D.computePowerSpectrum(surface)
 #vecteurs d'ondes
 freqs_x = np.fft.fftfreq(N, d=L/N) * 2 * np.pi  #fréquences spatiales pour l'axe x
 freqs_y = np.fft.rfftfreq(N, d=L/N) * 2 * np.pi  # rfftfreq crée la dimension N//2 + 1,  fréquences spatiale pour l'axe y
-qx, qy = np.meshgrid(freqs_x, freqs_y, indexing='ij')  #grille 2D des fréquences spatiales
+qx, qy = np.meshgrid(freqs_x, freqs_y,indexing='ij')  #grille 2D des fréquences spatiales
 q_norm = np.sqrt(qx**2 + qy**2) #fréquence spatiale absolue 
 
 
@@ -211,10 +211,10 @@ print(f"Force asymptotique (Carbone-Putignano) : {ft_asymptote:.4e}")
 #tracé de fx et mu
 fig_fx, ax_fx = plt.subplots(figsize=(8, 4))
 ax_fx.plot(temps, historique_ft, 'r-', lw=1.5, label="Simulation Tamaas")
-ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson (Dynamique)")
+ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson ")
 
-# Ajout de l'asymptote sur le graphique
-ax_fx.axhline(y=ft_asymptote, color='b', linestyle='-.', lw=1.5, label=f"Asymptote régime permanent (F = {ft_asymptote:.2e} N)")
+#ajout de l'asymptote sur le graphique
+ax_fx.axhline(y=ft_asymptote, color='b', linestyle='-.', label=f"Asymptote régime permanent (F = {ft_asymptote:.2e})")
 
 ax_fx.set(xlabel="Temps (s)", ylabel="Force de frottement Fx (N)",title=f"Évolution du frottement (Nombre de pas totaux = {pas})")
 ax_fx.grid()
