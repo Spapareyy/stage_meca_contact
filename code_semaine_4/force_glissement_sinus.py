@@ -13,9 +13,9 @@ if len(sys.argv) > 3:
     pas = int(sys.argv[3])
     suff_pas = sys.argv[3]
 else: #si execution via spyder
-    load = 2e-5 
+    load = 1e-5 
     hurst = 0.7
-    pas = 250    #changer valeur pour décaler de x pas
+    pas = 100    #changer valeur pour décaler de x pas
     suff_load = str(load)
     suff_hurst = str(hurst)
     suff_pas = str(pas)
@@ -24,17 +24,15 @@ os.makedirs("resultats", exist_ok=True)
 
 
 L =1.
-spectrum = tm.Isopowerlaw2D()
-spectrum.q0 = 10
-spectrum.q1 = 10
-spectrum.q2 = 70
-spectrum.hurst = hurst
-generator = tm.SurfaceGeneratorFilter2D([N, N])
-generator.spectrum = spectrum
-generator.random_seed = 4
-surface = generator.buildSurface()
+
+#surface sinusoidale
+x_tmp = np.linspace(0, L, N, endpoint=False)
+y_tmp = np.linspace(0, L, N, endpoint=False)
+xx, yy = np.meshgrid(x_tmp, y_tmp, indexing='ij')
+
 h0=1e-6 #ampltiude des bosses
-surface *= h0 / tm.Statistics2D.computeRMSHeights(surface)
+# Surface simple 2D (4 bosses spatiales)
+surface = h0 * np.sin(2 * np.pi * 4 * xx / L) * np.sin(2 * np.pi * 4 * yy / L)
 
 x = np.linspace(0, L, N, endpoint=False)
 #calcul du psd
@@ -172,7 +170,7 @@ for i, t in enumerate(temps):
     P_q_t = A_reel_t / Surface_totale  #comme p_q_t dépend de q et de t on a décidé de pas l'inclure dans l'equation de f_t
     
     #on applique la formule de l'équation 18 (avec le 1/2 et cos(0)=1)
-    f_t = 0.5*  integrale_q * Surface_totale* P_q_t
+    f_t = 0.5* integrale_q * Surface_totale* P_q_t
     F_analytique_t.append(f_t)
 
 F_analytique_t = np.array(F_analytique_t)
@@ -195,8 +193,8 @@ solver_stat = tm.PolonskyKeerRey(model, surface, 1e-7)
 solver_stat.solve(load)
 
 #on modifie le G 
-Green_original = model.operators['westergaard_neumann']['influence'][:].copy() #sauvegarde du green pour pouvoir relancer juste cette cellule
-model.operators['westergaard_neumann']['influence'][:] = Green_original * M_qv
+Green = model.operators['westergaard_neumann']['influence'][:]
+model.operators['westergaard_neumann']['influence'][:] = Green * M_qv
 
 #résolution avec le nouveau G
 solver_stat.solve(load)
@@ -205,7 +203,7 @@ solver_stat.solve(load)
 ft_asymptote = np.sum(model.traction * pente_x) * dS
 print(f"Force asymptotique (Carbone-Putignano) : {ft_asymptote:.4e}")
 
-model.operators['westergaard_neumann']['influence'][:] = Green_original #on remet le green non modifié
+
 
 #tracé de fx et mu
 fig_fx, ax_fx = plt.subplots(figsize=(8, 4))
