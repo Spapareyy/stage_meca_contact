@@ -107,8 +107,8 @@ offset = np.max(h_cut - u_cut) #prend l'ecart le plus grand entre surf rigide et
 
 u_plot = u_cut+ offset
 
-ax1.plot(x, h_cut , 'k', label='Solide rigide', lw=1.5)
-ax1.plot(x, u_plot, 'b-', label='Solide déformable', lw=1.5)
+ax1.plot(x, h_cut , 'k', label='Solide rigide')
+ax1.plot(x, u_plot, 'b-', label='Solide déformable')
 
 ax1.set(xlabel="Position x (m)", ylabel="Hauteur (µm)",title=f"Profil de contact (y={y_max}, Pas numéro {pas})")
 ax1.set(xlabel="Position x (m)", ylabel="Hauteur (µm)", title=f"Profil de contact (y={y_max}, Pas numéro {pas})")
@@ -203,29 +203,35 @@ solver_stat.solve(load)
 ft_asymptote = np.sum(model.traction * pente_x) * dS
 print(f"Force asymptotique (Carbone-Putignano) : {ft_asymptote:.4e}")
 
+#calcul de l'erreur relative entre la fin de la simulation et l'asymptote
+erreur_relative = abs(historique_ft[-1] - ft_asymptote) / ft_asymptote * 100
+force_totale_n = load * L**2 #force normale réelle appliquée
 
 
 #tracé de fx et mu
-fig_fx, ax_fx = plt.subplots(figsize=(8, 4))
+fig_fx, ax_fx = plt.subplots(figsize=(8, 5))
 ax_fx.plot(temps, historique_ft, 'r-', lw=1.5, label="Simulation Tamaas")
-ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson ")
+ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson")
 
 #ajout de l'asymptote sur le graphique
-ax_fx.axhline(y=ft_asymptote, color='b', linestyle='-.', label=f"Asymptote régime permanent (F = {ft_asymptote:.2e})")
+ax_fx.axhline(y=ft_asymptote, color='b', linestyle='-.', label=f"Asymptote : {ft_asymptote:.2e}")
 
-ax_fx.set(xlabel="Temps (s)", ylabel="Force de frottement Fx",title=f"Évolution du frottement (Nombre de pas totaux = {pas})")
+#ajout des infos de force appliquée et de l'erreur
+texte_info = (f"Force appliquée (Load) : {force_totale_n:.2e} \n" f"Erreur Relative en régime permanent: {erreur_relative:.2f} %")
+
+# On place la boîte de texte en haut à gauche (axes coords)
+ax_fx.text(0.02, 0.95, texte_info, transform=ax_fx.transAxes, fontsize=10,verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+
+
+ax_fx.set(xlabel="Temps", ylabel="Force de frottement Fx",title=f"Évolution du frottement (Pas = {pas}, N = {N})")
 ax_fx.grid()
-ax_fx.legend()
+ax_fx.legend(loc='lower right')
 
-#on ajoute mu sur la même courbe car c'est juste un coef de fx
+#ajout de mu sur le deuxième axe
 ax_mu = ax_fx.twinx()
 ymin, ymax = ax_fx.get_ylim()
 ax_mu.set_ylim(ymin / fn, ymax / fn)
 ax_mu.set_ylabel("Coefficient de frottement $\mu$", color='red')
 
-#enregistrement du fx(t) final avec le mu
 fig_fx.savefig(f"resultats/courbe_fx_total_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}.png")
-if len(sys.argv) > 3:
-    plt.close(fig_fx)
-else: 
-    plt.show()
+plt.show()
