@@ -13,9 +13,9 @@ if len(sys.argv) > 3:
     pas = int(sys.argv[3])
     suff_pas = sys.argv[3]
 else: #si execution via spyder
-    load = 2e-5 
+    load = 1e-5 
     hurst = 0.7
-    pas = 250    #changer valeur pour décaler de x pas
+    pas = 40    #changer valeur pour décaler de x pas
     suff_load = str(load)
     suff_hurst = str(hurst)
     suff_pas = str(pas)
@@ -57,7 +57,7 @@ pas_temps=(L/N)/V_cible
 G_i = np.array([3.0])   # si on a k=0.1 , et Einf=1 on a dE=9 et E=3*G avec nu=0.5 donc G=dE/3=3
 tau_i = np.array([0.1]) # taurelax= k*tau_fluage avec k=0.1 et tau_fluage =1 , taurelax=0.1
 
-solver = tm.MaxwellViscoelastic(model, surface, 1e-9,
+solver = tm.MaxwellViscoelastic(model, surface, 1e-12,
                                 time_step=pas_temps,
                                 shear_moduli=G_i,
                                 characteristic_times=tau_i)
@@ -94,23 +94,19 @@ fig_def, ax1 = plt.subplots(figsize=(10, 5))
 plt.axvline(x=(pas/N )%1,ymin=0,ymax=1)
 #ces 4 lignes servent a obtenir l'endroit avec la pression la plus élevée 
 y_max = np.argmax(np.max(model.traction, axis=1)) #on prend l'indice de la pression la plus élevée parmi l'ensemble des pressions maximales de chaque ligne
-#ymax=128 #ici on choisit n'importe quel endroit si on ne veut pas la pression maximale
-h_cut = surface[y_max, :] #on prend la ligne de la surface rugueuse qui correspond à cette pression
-u_cut = model.displacement[y_max, :] #on prend le deplacement de la surface deformee qui correspond a cette pression
-p_cut = model.traction[y_max, :] #on prend le profil de pression de la ligne qui correspond a cette pression
+u_tot_2d = model['viscoelastic_displacement']
 
-#h_cut : profil de la surface rigide sur la ligne choisie
-#u_cut : déplacement vertical de la surface déformée 
+h_cut = surface[y_max, :]  #on prend la ligne de la surface rugueuse qui correspond à cette pression
+p_cut = model.traction[y_max, :]  #on prend le profil de pression de la ligne qui correspond a cette pression
+u_cut = u_tot_2d[y_max, :]  #on prend le deplacement de la surface deformee qui correspond a cette pression
+offset = np.max(h_cut - u_cut)
 
-#on cherche le point de pression max sur la ligne du ymax
-# et on force le solide déformable à toucher la surface exactement à cet endroit.
-
-offset = np.max(h_cut - u_cut) #prend l'ecart le plus grand entre surf rigide et surf deformable
 
 u_plot = u_cut+ offset
 
-ax1.plot(x, h_cut , 'k', label='Solide rigide', lw=1.5)
-ax1.plot(x, u_plot, 'b-', label='Solide déformable', lw=1.5)
+
+ax1.plot(x, h_cut , 'k', label='Solide rigide')
+ax1.plot(x, u_plot, 'b-', label='Solide déformable')
 
 ax1.set(xlabel="Position x (m)", ylabel="Hauteur (µm)",title=f"Profil de contact (y={y_max}, Pas numéro {pas})")
 ax1.set(xlabel="Position x (m)", ylabel="Hauteur (µm)", title=f"Profil de contact (y={y_max}, Pas numéro {pas})")
@@ -172,7 +168,7 @@ for i, t in enumerate(temps):
     P_q_t = A_reel_t / Surface_totale  #comme p_q_t dépend de q et de t on a décidé de pas l'inclure dans l'equation de f_t
     
     #on applique la formule de l'équation 18 (avec le 1/2 et cos(0)=1)
-    f_t = 0.5*  integrale_q * Surface_totale* P_q_t
+    f_t = 0.5* integrale_q * Surface_totale* P_q_t
     F_analytique_t.append(f_t)
 
 F_analytique_t = np.array(F_analytique_t)
@@ -191,12 +187,12 @@ omega_car = -qy * vit
 #terme devant le G
 M_qv = k + ((1 - k)/(1 - 1j *omega_car *tau))
 
-solver_stat = tm.PolonskyKeerRey(model, surface, 1e-7)
+solver_stat = tm.PolonskyKeerRey(model, surface, 1e-9)
 solver_stat.solve(load)
 
 #on modifie le G 
-Green_original = model.operators['westergaard_neumann']['influence'][:].copy() #sauvegarde du green pour pouvoir relancer juste cette cellule
-model.operators['westergaard_neumann']['influence'][:] = Green_original * M_qv
+Green = model.operators['westergaard_neumann']['influence'][:]
+model.operators['westergaard_neumann']['influence'][:] = Green * M_qv
 
 #résolution avec le nouveau G
 solver_stat.solve(load)
@@ -205,29 +201,35 @@ solver_stat.solve(load)
 ft_asymptote = np.sum(model.traction * pente_x) * dS
 print(f"Force asymptotique (Carbone-Putignano) : {ft_asymptote:.4e}")
 
-model.operators['westergaard_neumann']['influence'][:] = Green_original #on remet le green non modifié
+#calcul de l'erreur relative entre la fin de la simulation et l'asymptote
+erreur_relative = abs(historique_ft[-1] - ft_asymptote) / ft_asymptote * 100
+force_totale_n = load * L**2 #force normale réelle appliquée
+
 
 #tracé de fx et mu
-fig_fx, ax_fx = plt.subplots(figsize=(8, 4))
+fig_fx, ax_fx = plt.subplots(figsize=(8, 5))
 ax_fx.plot(temps, historique_ft, 'r-', lw=1.5, label="Simulation Tamaas")
-ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson ")
+ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson")
 
 #ajout de l'asymptote sur le graphique
-ax_fx.axhline(y=ft_asymptote, color='b', linestyle='-.', label=f"Asymptote régime permanent (F = {ft_asymptote:.2e})")
+ax_fx.axhline(y=ft_asymptote, color='b', linestyle='-.', label=f"Asymptote : {ft_asymptote:.2e}")
 
-ax_fx.set(xlabel="Temps (s)", ylabel="Force de frottement Fx",title=f"Évolution du frottement (Nombre de pas totaux = {pas})")
+#ajout des infos de force appliquée et de l'erreur
+texte_info = (f"Force appliquée (Load) : {force_totale_n:.2e} \n" f"Erreur Relative en régime permanent: {erreur_relative:.2f} %")
+
+#on place la boîte de texte en haut à gauche (axes coords)
+ax_fx.text(0.02, 0.95, texte_info, transform=ax_fx.transAxes, fontsize=10,verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+
+
+ax_fx.set(xlabel="Temps", ylabel="Force de frottement Fx",title=f"Évolution du frottement (Pas = {pas}, N = {N})")
 ax_fx.grid()
-ax_fx.legend()
+ax_fx.legend(loc='lower right')
 
-#on ajoute mu sur la même courbe car c'est juste un coef de fx
+#ajout de mu sur le deuxième axe
 ax_mu = ax_fx.twinx()
 ymin, ymax = ax_fx.get_ylim()
 ax_mu.set_ylim(ymin / fn, ymax / fn)
 ax_mu.set_ylabel("Coefficient de frottement $\mu$", color='red')
 
-#enregistrement du fx(t) final avec le mu
 fig_fx.savefig(f"resultats/courbe_fx_total_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}.png")
-if len(sys.argv) > 3:
-    plt.close(fig_fx)
-else: 
-    plt.show()
+plt.show()
