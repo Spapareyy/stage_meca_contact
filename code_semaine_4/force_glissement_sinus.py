@@ -1,10 +1,12 @@
 import tamaas as tm
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import sys
 import os
 
-N=200
+N=300
 if len(sys.argv) > 3:
     load = float(sys.argv[1])
     suff_load = sys.argv[1]
@@ -13,12 +15,16 @@ if len(sys.argv) > 3:
     pas = int(sys.argv[3])
     suff_pas = sys.argv[3]
 else: #si execution via spyder
-    load = 1e-5 
+    import datetime
+    load = 1e-5
     hurst = 0.7
-    pas = 100    #changer valeur pour décaler de x pas
+    pas = 400    #changer valeur pour décaler de x pas
     suff_load = str(load)
     suff_hurst = str(hurst)
     suff_pas = str(pas)
+    
+    timestamp = datetime.datetime.now().strftime("%Hh%Mm%Ss")
+    suff_load = f"{load}_spyder_{timestamp}"
 
 os.makedirs("resultats", exist_ok=True)
 
@@ -71,6 +77,10 @@ temps = []
 #on ne s'interesse qu'a la pente selon x
 pente_y, pente_x = np.gradient(surface, dx)
 
+
+temps_attente = 20
+for i in range(temps_attente):
+    solver.solve(load)
 #boucle
 #on boucle exactement 'pas + 1' fois pour s'arrêter sur le pas demandé
 for i in range(pas + 1):
@@ -89,23 +99,28 @@ for i in range(pas + 1):
 #%%
 ##### tracé des surfaces  #####
 fig_def, ax1 = plt.subplots(figsize=(10, 5))
-plt.axvline(x=(pas/N )%1,ymin=0,ymax=1)
-#ces 4 lignes servent a obtenir l'endroit avec la pression la plus élevée 
-y_max = np.argmax(np.max(model.traction, axis=1)) #on prend l'indice de la pression la plus élevée parmi l'ensemble des pressions maximales de chaque ligne
-#ymax=128 #ici on choisit n'importe quel endroit si on ne veut pas la pression maximale
-h_cut = surface[y_max, :] #on prend la ligne de la surface rugueuse qui correspond à cette pression
-u_cut = model.displacement[y_max, :] #on prend le deplacement de la surface deformee qui correspond a cette pression
-p_cut = model.traction[y_max, :] #on prend le profil de pression de la ligne qui correspond a cette pression
+plt.axvline(x=(-pas/N )%1,ymin=0,ymax=1)
 
+#y_max = np.argmax(np.max(model.traction, axis=1)) #on prend l'indice de la pression la plus élevée parmi l'ensemble des pressions maximales de chaque ligne
+y_max=128 #ici on choisit n'importe quel endroit si on ne veut pas la pression maximale
 #h_cut : profil de la surface rigide sur la ligne choisie
 #u_cut : déplacement vertical de la surface déformée 
 
-#on cherche le point de pression max sur la ligne du ymax
-# et on force le solide déformable à toucher la surface exactement à cet endroit.
+u_tot_2d = model['viscoelastic_displacement']
 
-offset = np.max(h_cut - u_cut) #prend l'ecart le plus grand entre surf rigide et surf deformable
 
-u_plot = u_cut+ offset
+u_cut_total = u_tot_2d[y_max, :] #on prend le deplacement de la surface deformee qui correspond a cette pression
+h_cut = surface[y_max, :] #on prend la ligne de la surface rugueuse qui correspond à cette pression
+p_cut = model.traction[y_max, :] #on prend le profil de pression de la ligne qui correspond a cette pression
+offset = np.max(h_cut - u_cut_total) #prend l'ecart le plus grand entre surf rigide et surf deformable
+
+
+u_plot = u_cut_total + offset
+
+
+
+
+
 
 ax1.plot(x, h_cut , 'k', label='Solide rigide')
 ax1.plot(x, u_plot, 'b-', label='Solide déformable')
@@ -207,7 +222,7 @@ print(f"Force asymptotique (Carbone-Putignano) : {ft_asymptote:.4e}")
 erreur_relative = abs(historique_ft[-1] - ft_asymptote) / ft_asymptote * 100
 force_totale_n = load * L**2 #force normale réelle appliquée
 
-
+ratio_ft_fn=historique_ft[-1]/force_totale_n
 #tracé de fx et mu
 fig_fx, ax_fx = plt.subplots(figsize=(8, 5))
 ax_fx.plot(temps, historique_ft, 'r-', lw=1.5, label="Simulation Tamaas")
@@ -217,9 +232,9 @@ ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson")
 ax_fx.axhline(y=ft_asymptote, color='b', linestyle='-.', label=f"Asymptote : {ft_asymptote:.2e}")
 
 #ajout des infos de force appliquée et de l'erreur
-texte_info = (f"Force appliquée (Load) : {force_totale_n:.2e} \n" f"Erreur Relative en régime permanent: {erreur_relative:.2f} %")
+texte_info = (f"Force appliquée (Load) : {force_totale_n:.2e} \n" f"Erreur Relative en régime permanent: {erreur_relative:.2f} % \n Ft en régime permanent (tamaas) : {historique_ft[-1]:.2e}. \n ratio ft/fn: {ratio_ft_fn:.2e}      ")
 
-# On place la boîte de texte en haut à gauche (axes coords)
+#on place la boîte de texte en haut à gauche (axes coords)
 ax_fx.text(0.02, 0.95, texte_info, transform=ax_fx.transAxes, fontsize=10,verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
 
 
