@@ -1,7 +1,6 @@
 import tamaas as tm
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')
+
 import matplotlib.pyplot as plt
 import sys
 import os
@@ -16,9 +15,9 @@ if len(sys.argv) > 3:
     suff_pas = sys.argv[3]
 else: #si execution via spyder
     import datetime
-    load = 1e-5
+    load = 1
     hurst = 0.7
-    pas = 400    #changer valeur pour décaler de x pas
+    pas = 200    #changer valeur pour décaler de x pas
     suff_load = str(load)
     suff_hurst = str(hurst)
     suff_pas = str(pas)
@@ -57,7 +56,6 @@ nu=0.5
 model.nu = nu
 V_cible=0.1 #pour avoir la meme vitesse peu importe la valeur de N
 pas_temps=(L/N)/V_cible
-
 G_i = np.array([3.0])   # si on a k=0.1 , et Einf=1 on a dE=9 et E=3*G avec nu=0.5 donc G=dE/3=3
 tau_i = np.array([0.1]) # taurelax= k*tau_fluage avec k=0.1 et tau_fluage =1 , taurelax=0.1
 
@@ -78,7 +76,8 @@ temps = []
 pente_y, pente_x = np.gradient(surface, dx)
 
 
-temps_attente = 20
+
+temps_attente = 0
 for i in range(temps_attente):
     solver.solve(load)
 #boucle
@@ -88,7 +87,7 @@ for i in range(pas + 1):
     
     #on décale la surface seulement si on n'est pas au dernier pas
     # (pour que l'image finale corresponde bien à l'état après la résolution)
-    ft = np.sum(model.traction * pente_x) * dS
+    ft = np.sum((model.traction-load) * pente_x) * dS
     A_reel = np.sum(model.traction > 0) * dS
     historique_ft.append(ft)
     historique_A_reel.append(A_reel)
@@ -101,12 +100,13 @@ for i in range(pas + 1):
 fig_def, ax1 = plt.subplots(figsize=(10, 5))
 plt.axvline(x=(-pas/N )%1,ymin=0,ymax=1)
 
-#y_max = np.argmax(np.max(model.traction, axis=1)) #on prend l'indice de la pression la plus élevée parmi l'ensemble des pressions maximales de chaque ligne
-y_max=128 #ici on choisit n'importe quel endroit si on ne veut pas la pression maximale
+y_max = np.argmax(np.max(model.traction, axis=1)) #on prend l'indice de la pression la plus élevée parmi l'ensemble des pressions maximales de chaque ligne
+
+#y_max=128 #ici on choisit n'importe quel endroit si on ne veut pas la pression maximale
 #h_cut : profil de la surface rigide sur la ligne choisie
 #u_cut : déplacement vertical de la surface déformée 
 
-u_tot_2d = model['viscoelastic_displacement']
+u_tot_2d = model.displacement
 
 
 u_cut_total = u_tot_2d[y_max, :] #on prend le deplacement de la surface deformee qui correspond a cette pression
@@ -115,8 +115,7 @@ p_cut = model.traction[y_max, :] #on prend le profil de pression de la ligne qui
 offset = np.max(h_cut - u_cut_total) #prend l'ecart le plus grand entre surf rigide et surf deformable
 
 
-u_plot = u_cut_total + offset
-
+u_plot = u_cut_total
 
 
 
@@ -152,7 +151,7 @@ with open(chemin_txt, "w") as f:
     f.write(f"Ft = {ft}\nmu = {mu_final}\nAire_reelle_finale = {A_reel}")
 
 
-
+plt.show()
 ####### méthode persson #######
 V = (L / N) / pas_temps   #vitesse de glissement (distance d'un pas / temps d'un pas)
 omega = qx * V             #fréquence d'excitation vue par le solide déformable (rad/s)
@@ -191,13 +190,10 @@ for i, t in enumerate(temps):
 F_analytique_t = np.array(F_analytique_t)
 
 
-
-
 ##### méthode carbone putignano #####
 k = 0.1
 tau = 1.0  
 vit = (L / N) / pas_temps  
-
 #la rugosité recule sur l'axe y dans le np.roll (axis=1, shift=-1), donc la vitesse relative est -vit
 omega_car = -qy * vit  
 
@@ -215,8 +211,32 @@ model.operators['westergaard_neumann']['influence'][:] = Green * M_qv
 solver_stat.solve(load)
 
 #calcul de la force asymptotique
-ft_asymptote = np.sum(model.traction * pente_x) * dS
+ft_asymptote = np.sum((model.traction) * pente_x) * dS
 print(f"Force asymptotique (Carbone-Putignano) : {ft_asymptote:.4e}")
+
+
+
+#### calcul analytique pour contact complet ####
+#on utilise la matrice de green
+G_complexe = Green 
+G_complexe[0, 0] = 1.0 #pour éviter la division par zéro en q=0
+
+h_fft = np.fft.rfft2(surface) #tf de la surface
+
+p_fft = h_fft / G_complexe # calcul de la pression analytique
+p_fft[0, 0] = 0.0 #on annule la pression moyenne
+
+pente_spectrale_fft = 1j * qy * h_fft
+
+#retour dans l'espace réel
+p_analytique = np.fft.irfft2(p_fft, s=(N, N))
+pente_analytique = np.fft.irfft2(pente_spectrale_fft, s=(N, N))
+
+ft_parseval = np.sum(p_analytique * pente_analytique) * dS
+print(f"Force  de frottement analytique  : {ft_parseval:.4e}")
+
+
+
 
 #calcul de l'erreur relative entre la fin de la simulation et l'asymptote
 erreur_relative = abs(historique_ft[-1] - ft_asymptote) / ft_asymptote * 100
@@ -230,15 +250,16 @@ ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson")
 
 #ajout de l'asymptote sur le graphique
 ax_fx.axhline(y=ft_asymptote, color='b', linestyle='-.', label=f"Asymptote : {ft_asymptote:.2e}")
+ax_fx.axhline(y=ft_parseval, color='g', linestyle=':', label=f"Analytique (Parseval) : {ft_parseval:.2e}")
 
 #ajout des infos de force appliquée et de l'erreur
-texte_info = (f"Force appliquée (Load) : {force_totale_n:.2e} \n" f"Erreur Relative en régime permanent: {erreur_relative:.2f} % \n Ft en régime permanent (tamaas) : {historique_ft[-1]:.2e}. \n ratio ft/fn: {ratio_ft_fn:.2e}      ")
+texte_info = (f"Force appliquée (Load) : {force_totale_n:.2e} \n" f"Erreur Relative en régime permanent: {erreur_relative:.2f} % \n" f"Ft en régime permanent (tamaas) : {historique_ft[-1]:.2e}. \n" f"ratio ft/fn: {ratio_ft_fn:.2e} \n" f"Ft (Parseval) : {ft_parseval:.2e}")
 
 #on place la boîte de texte en haut à gauche (axes coords)
 ax_fx.text(0.02, 0.95, texte_info, transform=ax_fx.transAxes, fontsize=10,verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
 
 
-ax_fx.set(xlabel="Temps", ylabel="Force de frottement Fx",title=f"Évolution du frottement (Pas = {pas}, N = {N})")
+ax_fx.set(xlabel="Temps", ylabel="Force de frottement Fx",title=f"Évolution du frottement (surface sinusoïdale)(Pas = {pas}, N = {N}, phase pré-charg: {temps_attente}")
 ax_fx.grid()
 ax_fx.legend(loc='lower right')
 

@@ -13,7 +13,7 @@ if len(sys.argv) > 3:
     pas = int(sys.argv[3])
     suff_pas = sys.argv[3]
 else: #si execution via spyder
-    load = 1e-5 
+    load = 1 
     hurst = 0.7
     pas = 400    #changer valeur pour décaler de x pas
     suff_load = str(load)
@@ -77,7 +77,7 @@ pente_y, pente_x = np.gradient(surface, dx)
 
 
     
-temps_attente = 20
+temps_attente = 0
 for i in range(temps_attente):
     solver.solve(load)
 
@@ -102,7 +102,7 @@ fig_def, ax1 = plt.subplots(figsize=(10, 5))
 plt.axvline(x=(-pas/N )%1,ymin=0,ymax=1)
 #ces 4 lignes servent a obtenir l'endroit avec la pression la plus élevée 
 y_max = np.argmax(np.max(model.traction, axis=1)) #on prend l'indice de la pression la plus élevée parmi l'ensemble des pressions maximales de chaque ligne
-u_tot_2d = model['viscoelastic_displacement']
+u_tot_2d = model.displacement
 
 h_cut = surface[y_max, :]  #on prend la ligne de la surface rugueuse qui correspond à cette pression
 p_cut = model.traction[y_max, :]  #on prend le profil de pression de la ligne qui correspond a cette pression
@@ -110,7 +110,7 @@ u_cut = u_tot_2d[y_max, :]  #on prend le deplacement de la surface deformee qui 
 offset = np.max(h_cut - u_cut)
 
 
-u_plot = u_cut + offset
+u_plot = u_cut
 
 
 ax1.plot(x, h_cut , 'k', label='Solide rigide')
@@ -166,7 +166,7 @@ for i, t in enumerate(temps):
         reponse_totale += reponse_t  #on additionne les réponses de chaque branche
     
     E_perte_t = 2 * np.imag(reponse_totale) / (1 - nu) #on garde uniquement la partie imaginaire 
-    contribution = qx*q_norm * C_q_2D * E_perte_t  #q*cos(phi)= qnorm*(qx/qnorm)= qnorm*qx
+    contribution = qx*q_norm * C_q_2D * E_perte_t  #q*cos(phi)= qnorm*(qx/qnorm)= qx
     integrale_q = np.sum(contribution)*2  #*2 car tamaas calcul le PSD pour la moitié des fréquences
     
     #on récupère l'aire réelle mesurée par Tamaas à cet instant précis
@@ -209,10 +209,35 @@ solver_stat.solve(load)
 ft_asymptote = np.sum(model.traction * pente_x) * dS
 print(f"Force asymptotique (Carbone-Putignano) : {ft_asymptote:.4e}")
 
+
+
+
+#### calcul analytique pour contact complet ####
+#on utilise la matrice de green
+G_complexe = Green 
+G_complexe[0, 0] = 1.0 #pour éviter la division par zéro en q=0
+
+h_fft = np.fft.rfft2(surface) #tf de la surface
+
+p_fft = h_fft / G_complexe # calcul de la pression analytique
+p_fft[0, 0] = 0.0 #on annule la pression moyenne
+
+pente_spectrale_fft = 1j * qy * h_fft
+
+#retour dans l'espace réel
+p_analytique = np.fft.irfft2(p_fft, s=(N, N))
+pente_analytique = np.fft.irfft2(pente_spectrale_fft, s=(N, N))
+
+ft_parseval = np.sum(p_analytique * pente_analytique) * dS
+print(f"Force  de frottement analytique  : {ft_parseval:.4e}")
+
+
+
 #calcul de l'erreur relative entre la fin de la simulation et l'asymptote
 erreur_relative = abs(historique_ft[-1] - ft_asymptote) / ft_asymptote * 100
 force_totale_n = load * L**2 #force normale réelle appliquée
 
+ratio_ft_fn=historique_ft[-1]/force_totale_n
 
 #tracé de fx et mu
 fig_fx, ax_fx = plt.subplots(figsize=(8, 5))
@@ -221,9 +246,10 @@ ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson")
 
 #ajout de l'asymptote sur le graphique
 ax_fx.axhline(y=ft_asymptote, color='b', linestyle='-.', label=f"Asymptote : {ft_asymptote:.2e}")
+ax_fx.axhline(y=ft_parseval, color='g', linestyle=':', label=f"Analytique (Parseval) : {ft_parseval:.2e}")
 
 #ajout des infos de force appliquée et de l'erreur
-texte_info = (f"Force appliquée (Load) : {force_totale_n:.2e} \n" f"Erreur Relative en régime permanent: {erreur_relative:.2f} %")
+texte_info = (f"Force appliquée (Load) : {force_totale_n:.2e} \n" f"Erreur Relative en régime permanent: {erreur_relative:.2f} % \n" f"Ft en régime permanent (tamaas) : {historique_ft[-1]:.2e}. \n" f"ratio ft/fn: {ratio_ft_fn:.2e} \n" f"Ft (Parseval) : {ft_parseval:.2e}")
 
 #on place la boîte de texte en haut à gauche (axes coords)
 ax_fx.text(0.02, 0.95, texte_info, transform=ax_fx.transAxes, fontsize=10,verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
