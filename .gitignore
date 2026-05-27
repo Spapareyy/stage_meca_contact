@@ -209,3 +209,13 @@ __marimo__/
 # Mes fichiers de résultats personnels
 *.png
 *.txt
+resultats/
+resultats_E=1/
+surf_rand/
+surf_rand_sans_precharg/
+surf_sinus/
+surf_sinus_sans_precharg/
+.snakemake/
+snakefile_rand
+snakefile_sinus
+
