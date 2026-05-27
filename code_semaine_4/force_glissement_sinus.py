@@ -35,10 +35,10 @@ x_tmp = np.linspace(0, L, N, endpoint=False)
 y_tmp = np.linspace(0, L, N, endpoint=False)
 xx, yy = np.meshgrid(x_tmp, y_tmp, indexing='ij')
 
-h0=1e-6 #ampltiude des bosses
+h0=1 #ampltiude des bosses
 # Surface simple 2D (4 bosses spatiales)
 surface = h0 * np.sin(2 * np.pi * 4 * xx / L) * np.sin(2 * np.pi * 4 * yy / L)
-
+load=tm.Statistics2D.computeFullContactPressure(surface)
 x = np.linspace(0, L, N, endpoint=False)
 #calcul du psd
 C_q_2D = tm.Statistics2D.computePowerSpectrum(surface)
@@ -54,6 +54,7 @@ model = tm.Model(tm.model_type.basic_2d, [L, L], [N, N])
 model.E= 1.
 nu=0.5
 model.nu = nu
+load*=model.E_star*10/L 
 V_cible=0.1 #pour avoir la meme vitesse peu importe la valeur de N
 pas_temps=(L/N)/V_cible
 G_i = np.array([3.0])   # si on a k=0.1 , et Einf=1 on a dE=9 et E=3*G avec nu=0.5 donc G=dE/3=3
@@ -87,7 +88,7 @@ for i in range(pas + 1):
     
     #on décale la surface seulement si on n'est pas au dernier pas
     # (pour que l'image finale corresponde bien à l'état après la résolution)
-    ft = np.sum((model.traction-load) * pente_x) * dS
+    ft = np.sum((model.traction) * pente_x) * dS
     A_reel = np.sum(model.traction > 0) * dS
     historique_ft.append(ft)
     historique_A_reel.append(A_reel)
@@ -111,7 +112,7 @@ u_tot_2d = model.displacement
 
 u_cut_total = u_tot_2d[y_max, :] #on prend le deplacement de la surface deformee qui correspond a cette pression
 h_cut = surface[y_max, :] #on prend la ligne de la surface rugueuse qui correspond à cette pression
-p_cut = model.traction[y_max, :] #on prend le profil de pression de la ligne qui correspond a cette pression
+p_cut = model.traction[y_max, :].copy() #on prend le profil de pression de la ligne qui correspond a cette pression
 offset = np.max(h_cut - u_cut_total) #prend l'ecart le plus grand entre surf rigide et surf deformable
 
 
@@ -129,7 +130,9 @@ ax1.set(xlabel="Position x (m)", ylabel="Hauteur (µm)", title=f"Profil de conta
 
 #tracé de la pression
 ax2 = ax1.twinx()
-ax2.fill_between(x, 0, p_cut, color='green', alpha=0.3, label='Pression')
+#ax2.fill_between(x, 0, p_cut, color='green', alpha=0.3, label='Pression')
+                 
+ax2.plot(x,p_cut, color='green', alpha=0.3, label='Pression')
 ax2.set_ylabel("Pression", color='green')
 ax1.grid()
 fig_def.legend(loc='upper right')
@@ -240,24 +243,24 @@ print(f"Force  de frottement analytique  : {ft_parseval:.4e}")
 
 #calcul de l'erreur relative entre la fin de la simulation et l'asymptote
 erreur_relative = abs(historique_ft[-1] - ft_asymptote) / ft_asymptote * 100
-force_totale_n = load * L**2 #force normale réelle appliquée
+force_normale = load * L**2 #force normale réelle appliquée
 
-ratio_ft_fn=historique_ft[-1]/force_totale_n
+ratio_ft_fn=historique_ft[-1]/force_normale
+
 #tracé de fx et mu
 fig_fx, ax_fx = plt.subplots(figsize=(8, 5))
 ax_fx.plot(temps, historique_ft, 'r-', lw=1.5, label="Simulation Tamaas")
 ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson")
 
 #ajout de l'asymptote sur le graphique
-ax_fx.axhline(y=ft_asymptote, color='b', linestyle='-.', label=f"Asymptote : {ft_asymptote:.2e}")
-ax_fx.axhline(y=ft_parseval, color='g', linestyle=':', label=f"Analytique (Parseval) : {ft_parseval:.2e}")
+ax_fx.axhline(y=ft_asymptote, color='b', linestyle='-.', label="Carbone-Putignano")
+ax_fx.axhline(y=ft_parseval, color='g', linestyle=':', label="Parseval")
 
-#ajout des infos de force appliquée et de l'erreur
-texte_info = (f"Force appliquée (Load) : {force_totale_n:.2e} \n" f"Erreur Relative en régime permanent: {erreur_relative:.2f} % \n" f"Ft en régime permanent (tamaas) : {historique_ft[-1]:.2e}. \n" f"ratio ft/fn: {ratio_ft_fn:.2e} \n" f"Ft (Parseval) : {ft_parseval:.2e}")
+#ajout des infos de force normale et de l'erreur
+texte_info = (f"Force normale (Load) : {force_normale:.2e} \n" f"Erreur Relative entre tamaas et carbone: {erreur_relative:.2f} % \n" f"Ft en régime permanent (tamaas) : {historique_ft[-1]:.2e}. \n" f"ratio ft/fn (Tamaas): {ratio_ft_fn:.2e} \n" f"Ft (Parseval) : {ft_parseval:.2e} \n"f"Ft(Carbone) : {ft_asymptote:.2e}")
 
 #on place la boîte de texte en haut à gauche (axes coords)
 ax_fx.text(0.02, 0.95, texte_info, transform=ax_fx.transAxes, fontsize=10,verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
-
 
 ax_fx.set(xlabel="Temps", ylabel="Force de frottement Fx",title=f"Évolution du frottement (surface sinusoïdale)(Pas = {pas}, N = {N}, phase pré-charg: {temps_attente}")
 ax_fx.grid()
