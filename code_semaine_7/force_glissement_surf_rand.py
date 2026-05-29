@@ -1,26 +1,34 @@
 import tamaas as tm
 import numpy as np
+
 import matplotlib.pyplot as plt
 import sys
 import os
 
-N=300
-if len(sys.argv) > 3:
+N=200
+if len(sys.argv) > 4:
     load = float(sys.argv[1])
     suff_load = sys.argv[1]
-    hurst = float(sys.argv[2])
-    suff_hurst = sys.argv[2]
-    pas = int(sys.argv[3])
-    suff_pas = sys.argv[3]
+    v_cible = float(sys.argv[2])
+    hurst = float(sys.argv[3])
+    suff_hurst = sys.argv[3]
+    pas = int(sys.argv[4])
+    suff_pas = sys.argv[4]
+    suff_v_cible = f"{v_cible:.2f}"
 else: #si execution via spyder
-    load = 10 
+    import datetime
+    load = 1
     hurst = 0.7
     pas = 200    #changer valeur pour décaler de x pas
+    v_cible= 0.9 #pour avoir la meme vitesse peu importe la valeur de N
     suff_load = str(load)
     suff_hurst = str(hurst)
     suff_pas = str(pas)
+    suff_v_cible = f"{v_cible:.2f}"
+    timestamp = datetime.datetime.now().strftime("%Hh%Mm%Ss")
+    suff_load = f"{load}_spyder_{timestamp}"
 
-os.makedirs("resultats", exist_ok=True)
+os.makedirs("resultats_rand", exist_ok=True)
 
 
 L =1.
@@ -52,8 +60,8 @@ model.E= 1.
 nu=0.5
 model.nu = nu
 load*=model.E_star*10/L
-V_cible=0.1 #pour avoir la meme vitesse peu importe la valeur de N
-pas_temps=(L/N)/V_cible
+
+pas_temps=(L/N)/v_cible
 
 G_i = np.array([3.0])   # si on a k=0.1 , et Einf=1 on a dE=9 et E=3*G avec nu=0.5 donc G=dE/3=3
 tau_i = np.array([0.1]) # taurelax= k*tau_fluage avec k=0.1 et tau_fluage =1 , taurelax=0.1
@@ -128,7 +136,7 @@ ax2.plot(x,p_cut, color='green', alpha=0.3, label='Pression')
 ax2.set_ylabel("Pression", color='green')
 ax1.grid()
 fig_def.legend(loc='upper right')
-fig_def.savefig(f"resultats/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}.png")
+fig_def.savefig(f"resultats_rand/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}.png")
 
 if len(sys.argv) > 3:
     plt.close(fig_def)
@@ -140,12 +148,12 @@ else:
 fn = load * L * L
 mu_final = ft / fn
 
-chemin_txt = f"resultats/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}.txt"
+chemin_txt = f"resultats_rand/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}.txt"
 with open(chemin_txt, "w") as f:
     
     f.write(f"Ft = {ft}\nmu = {mu_final}\nAire_reelle_finale = {A_reel}")
 
-
+#%%
 
 ####### méthode persson #######
 V = (L / N) / pas_temps   #vitesse de glissement (distance d'un pas / temps d'un pas)
@@ -185,7 +193,7 @@ for i, t in enumerate(temps):
 F_analytique_t = np.array(F_analytique_t)
 
 
-
+#%%
 
 ##### méthode carbone putignano #####
 k = 0.1
@@ -209,11 +217,11 @@ model.operators['westergaard_neumann']['influence'][:] = Green * M_qv
 solver_stat.solve(load)
 
 #calcul de la force asymptotique
-ft_Carbone = np.sum((model.traction) * pente_x) * dS
-print(f"Force asymptotique (Carbone-Putignano) : {ft_Carbone:.4e}")
+ft_carbone = np.sum((model.traction) * pente_x) * dS
+print(f"Force asymptotique (Carbone-Putignano) : {ft_carbone:.4e}")
 
 
-
+#%%
 
 #### calcul analytique pour contact complet ####
 #on utilise la matrice de green
@@ -234,13 +242,21 @@ pente_analytique = np.fft.irfft2(pente_spectrale_fft, s=(N, N))
 ft_parseval = np.sum((load+p_analytique) * pente_analytique) * dS
 print(f"Force  de frottement analytique  : {ft_parseval:.4e}")
 
+#%%
 
+#calcul de l'erreur relative entre tamaas et carbone-putignano
+erreur_relative = abs(historique_ft[-1] - ft_carbone) / ft_carbone * 100
+force_normale = load * L**2 #force normale réelle appliquée
 
-#calcul de l'erreur relative entre la fin de la simulation et l'asymptote
-erreur_relative = abs(historique_ft[-1] - ft_Carbone) / ft_Carbone * 100
-force_totale_n = load * L**2 #force normale réelle appliquée
+#calcul de l'erreur relative entre tamaas et carbone-putignano
+err_tp=abs(historique_ft[-1]-ft_parseval)/ft_parseval *100
 
-ratio_ft_fn=historique_ft[-1]/force_totale_n
+#calcul de l'erreur relative entre parseval et carbone-putignano
+err_cp=abs(ft_carbone-ft_parseval)/ft_parseval *100
+
+print("erreur tamaas/parseval : ",err_tp,"erreur carbone_parseval : ",err_cp)
+
+ratio_ft_fn=historique_ft[-1]/force_normale
 
 #tracé de fx et mu
 fig_fx, ax_fx = plt.subplots(figsize=(8, 5))
@@ -248,16 +264,16 @@ ax_fx.plot(temps, historique_ft, 'r-', lw=1.5, label="Simulation Tamaas")
 ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson")
 
 #ajout de l'asymptote sur le graphique
-ax_fx.axhline(y=ft_Carbone, color='b', linestyle='-.', label="Carbone-Putignano")
+ax_fx.axhline(y=ft_carbone, color='b', linestyle='-.', label="Carbone-Putignano")
 ax_fx.axhline(y=ft_parseval, color='g', linestyle=':', label="Parseval")
 
 #ajout des infos de force normale et de l'erreur
-texte_info = (f"Force normale (Load) : {force_totale_n:.2e} \n" f"Erreur Relative entre tamaas et carbone: {erreur_relative:.2f} % \n" f"Ft en régime permanent (tamaas) : {historique_ft[-1]:.2e}. \n" f"ratio ft/fn (Tamaas): {ratio_ft_fn:.2e} \n" f"Ft (Parseval) : {ft_parseval:.2e} \n"f"Ft(Carbone) : {ft_Carbone:.2e}")
+texte_info = (f"Force normale (Load) : {force_normale:.2e} \n" f"Erreur Relative entre tamaas et carbone: {erreur_relative:.2f} % \n" f"Ft en régime permanent (tamaas) : {historique_ft[-1]:.2e}. \n" f"Erreur Tamaas/Parseval : {err_tp:.2e} % \n" f"Ft (Parseval) : {ft_parseval:.2e} \n"f"Ft(Carbone) : {ft_carbone:.2e}")
 
 #on place la boîte de texte en haut à gauche (axes coords)
 ax_fx.text(0.02, 0.95, texte_info, transform=ax_fx.transAxes, fontsize=10,verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
 
-ax_fx.set(xlabel="Temps", ylabel="Force de frottement Fx",title=f"Évolution du frottement (surface aléatoire) (Pas = {pas}, N = {N}), phase pré-charg: {temps_attente})")
+ax_fx.set(xlabel="Temps", ylabel="Force de frottement Fx",title=f"Frottement (surface sinusoïdale) (Pas = {pas}, N = {N}, vit= {v_cible}, phase pré-charg = {temps_attente}")
 ax_fx.grid()
 ax_fx.legend(loc='lower right')
 
@@ -267,5 +283,12 @@ ymin, ymax = ax_fx.get_ylim()
 ax_mu.set_ylim(ymin / fn, ymax / fn)
 ax_mu.set_ylabel("Coefficient de frottement $\mu$", color='red')
 
-fig_fx.savefig(f"resultats/courbe_fx_total_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}.png")
-plt.show()
+fig_fx.savefig(f"resultats_rand/courbe_fx_total_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}.png")
+
+
+if "snakemake" in sys.modules or len(sys.argv) > 4:
+    # snakemake
+    plt.close('all')
+else:
+    #spyder
+    plt.show()
