@@ -52,9 +52,18 @@ x_tmp = np.linspace(0, L, N, endpoint=False)
 y_tmp = np.linspace(0, L, N, endpoint=False)
 xx, yy = np.meshgrid(x_tmp, y_tmp, indexing='ij')
 
-h0=1 #ampltiude des bosses
-# Surface simple 2D (4 bosses spatiales)
-surface = h0 * np.sin(2 * np.pi * 4 * xx / L) * np.sin(2 * np.pi * 4 * yy / L)
+#surface simple 2D (4 bosses spatiales)
+surface = np.sin(2 * np.pi * 4 * xx / L) * np.sin(2 * np.pi * 4 * yy / L)
+
+#calcul numérique de la pente RMS réelle de la surface sinusoïdale
+k = 2 * np.pi * 4 / L
+rms_slope = k / np.sqrt(2)
+
+h0 = 1 # ce n'est plus l'amplitude absolue, c'est la pente RMS visée 
+
+#on normalise la surface par sa propre pente, puis on applique h0
+surface = (surface / rms_slope) * h0
+
 load=tm.Statistics2D.computeFullContactPressure(surface)
 x = np.linspace(0, L, N, endpoint=False)
 #calcul du psd

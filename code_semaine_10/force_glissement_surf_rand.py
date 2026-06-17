@@ -82,6 +82,7 @@ tau_i = np.array([0.1]) # taurelax= k*tau_fluage avec k=0.1 et tau_fluage =1 , t
 pas_temps = tau_i[0] / div_tau
 if len(sys.argv) > 6:
     pas = int(200 * div_tau)
+    
 solver = tm.MaxwellViscoelastic(model, surface, 1e-9,
                                 time_step=pas_temps,
                                 shear_moduli=G_i,
