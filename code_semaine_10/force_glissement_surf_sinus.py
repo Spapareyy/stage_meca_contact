@@ -28,9 +28,9 @@ else: #si execution via spyder
     temps_attente = 0
     load = 1
     hurst = 0.7
-    pas = 200    #changer valeur pour décaler de x pas
     v_cible= 0.16 #pour avoir la meme vitesse peu importe la valeur de N
-    div_tau = 100.0
+    div_tau = 50.0
+    pas = int(10*div_tau)    #changer valeur pour décaler de x pas
     suff_div_tau = str(div_tau)
     suff_load = str(load)
     suff_hurst = str(hurst)
@@ -72,7 +72,8 @@ model.E= 1.
 nu=0.5
 model.nu = nu
 load*=model.E_star*10/L 
-
+#on multiplie la force normale par la vraie raideur du materiau pour avoir les bonnes dimensions et on divise par L pour les bonnes dimensions
+# car load est en metres , model E star en Pascals et L en metres
 
 G_i = np.array([3.0])   # si on a k=0.1 , et Einf=1 on a dE=9 et E=3*G avec nu=0.5 donc G=dE/3=3
 tau_i = np.array([0.1]) # taurelax= k*tau_fluage avec k=0.1 et tau_fluage =1 , taurelax=0.1
