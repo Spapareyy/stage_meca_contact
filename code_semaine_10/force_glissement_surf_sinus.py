@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 import os
-
 N=200
 if len(sys.argv) > 5:
     load = float(sys.argv[1])
@@ -26,10 +25,10 @@ if len(sys.argv) > 5:
 else: #si execution via spyder
     import datetime
     temps_attente = 0
-    load = 1
+    load = 15  #valeur contact complet: environ 15
     hurst = 0.7
-    v_cible= 0.16 #pour avoir la meme vitesse peu importe la valeur de N
-    div_tau = 50.0
+    v_cible= 0.8 #pour avoir la meme vitesse peu importe la valeur de N
+    div_tau = 20.0
     pas = int(10*div_tau)    #changer valeur pour décaler de x pas
     suff_div_tau = str(div_tau)
     suff_load = str(load)
@@ -40,8 +39,10 @@ else: #si execution via spyder
     timestamp = datetime.datetime.now().strftime("%Hh%Mm%Ss")
     suff_load = f"{load}_spyder_{timestamp}"
 
-
-nom_doss="full_contact_sin_differentes_vitesse_gradexact"
+if len(sys.argv) > 7:
+    nom_doss = sys.argv[7]
+else:
+    nom_doss = "full_contact_sin_differentes_vitesse_gradexact"
 os.makedirs(nom_doss, exist_ok=True)
 
 
@@ -59,12 +60,12 @@ surface = np.sin(2 * np.pi * 4 * xx / L) * np.sin(2 * np.pi * 4 * yy / L)
 k = 2 * np.pi * 4 / L
 rms_slope = k / np.sqrt(2)
 
-h0 = 1 # ce n'est plus l'amplitude absolue, c'est la pente RMS visée 
+h0 = 1 #c'est la pente RMS visée 
 
 #on normalise la surface par sa propre pente, puis on applique h0
 surface = (surface / rms_slope) * h0
 
-load=tm.Statistics2D.computeFullContactPressure(surface)
+#load=tm.Statistics2D.computeFullContactPressure(surface)
 x = np.linspace(0, L, N, endpoint=False)
 #calcul du psd
 C_q_2D = tm.Statistics2D.computePowerSpectrum(surface)
@@ -80,15 +81,16 @@ model = tm.Model(tm.model_type.basic_2d, [L, L], [N, N])
 model.E= 1.
 nu=0.5
 model.nu = nu
-load*=model.E_star*10/L 
+#load*=model.E_star*10/L 
 #on multiplie la force normale par la vraie raideur du materiau pour avoir les bonnes dimensions et on divise par L pour les bonnes dimensions
 # car load est en metres , model E star en Pascals et L en metres
 
 G_i = np.array([3.0])   # si on a k=0.1 , et Einf=1 on a dE=9 et E=3*G avec nu=0.5 donc G=dE/3=3
 tau_i = np.array([0.1]) # taurelax= k*tau_fluage avec k=0.1 et tau_fluage =1 , taurelax=0.1
 pas_temps = tau_i[0] / div_tau
-if len(sys.argv) > 6:
-    pas = int(200 * div_tau)
+
+if "erreur" in nom_doss:
+    pas = int(pas * div_tau)
 
 
 solver = tm.MaxwellViscoelastic(model, surface, 1e-9,
@@ -203,7 +205,7 @@ mu_final = ft / fn
 chemin_txt = f"{nom_doss}/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}.txt"
 with open(chemin_txt, "w") as f:
     
-    f.write(f"Ft = {ft}\nmu = {mu_final}\nAire_reelle_finale = {A_reel}")
+    f.write(f"Ft = {ft}\nmu = {mu_final}\nAire_reelle_initiale = {historique_A_reel[0]}\nAire_reelle_finale = {A_reel}\n")
 
 
 #%%
@@ -345,8 +347,9 @@ chemin_pic = f"{nom_doss}/pic_frottement_step_{suff_pas}_load_{suff_load}_H_{suf
 with open(chemin_pic, "w") as f:
     f.write(f"{temps_attente}\t{pic_frottement}\n")
 
-dossier_erreur = "resultat_erreur_tau_diff_sinus"
+dossier_erreur = "resultat_erreur_tau_diff_sinus_v_08"
 os.makedirs(dossier_erreur, exist_ok=True)
+
 chemin_erreur = f"{dossier_erreur}/erreur_div_{suff_div_tau}.txt"
 with open(chemin_erreur, "w") as f:
     f.write(f"{div_tau}\t{err_tp}\n")
