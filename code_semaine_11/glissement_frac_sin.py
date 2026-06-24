@@ -26,9 +26,9 @@ if len(sys.argv) > 5:
 else: #si execution via spyder
     import datetime
     temps_attente = 0
-    load = 80#valeur contact complet: environ 15
+    load = 30#valeur contact complet: environ 15
     hurst = 0.7
-    v_cible= 3.0 #pour avoir la meme vitesse peu importe la valeur de N
+    v_cible= 3.5 #pour avoir la meme vitesse peu importe la valeur de N
     div_tau = 20.0
     pas = int(10*div_tau)    #changer valeur pour décaler de x pas
     suff_div_tau = str(div_tau)
@@ -66,7 +66,7 @@ h0 = 1 #c'est la pente RMS visée
 #on normalise la surface par sa propre pente, puis on applique h0
 surface = (surface / rms_slope) * h0
 
-#load=tm.Statistics2D.computeFullContactPressure(surface)
+load=tm.Statistics2D.computeFullContactPressure(surface)
 x = np.linspace(0, L, N, endpoint=False)
 #calcul du psd
 C_q_2D = tm.Statistics2D.computePowerSpectrum(surface)
@@ -82,13 +82,15 @@ model = tm.Model(tm.model_type.basic_2d, [L, L], [N, N])
 model.E= 1.
 nu=0.5
 model.nu = nu
-#load*=model.E_star*10/L 
+load*=model.E_star*10/L 
 #on multiplie la force normale par la vraie raideur du materiau pour avoir les bonnes dimensions et on divise par L pour les bonnes dimensions
 # car load est en metres , model E star en Pascals et L en metres
 
 #G_i = np.array([3.0])   # si on a k=0.1 , et Einf=1 on a dE=9 et E=3*G avec nu=0.5 donc G=dE/3=3
 #tau_i = np.array([0.1]) # taurelax= k*tau_fluage avec k=0.1 et tau_fluage =1 , taurelax=0.1
 
+
+##### matériau fractionnaire  #####
 
 alpha = 0.5  # (entre 0 et 1)
 k = 0.1  #ratio entre la rigidité à long terme (E_inf) et instantanée (E_0)
@@ -97,8 +99,8 @@ k = 0.1  #ratio entre la rigidité à long terme (E_inf) et instantanée (E_0)
 tau_min = 1e-2  #le temps le plus rapide
 tau_max = 1e2   #le temps le plus lent 
 
-f_min = 1.0 /tau_max  
-f_max = 1.0 /tau_min
+f_min = 1.0/tau_max  
+f_max = 1.0/tau_min
 
 #nombre de branches discrètes souhaitées
 N_branches = 5 
@@ -109,9 +111,6 @@ tau_i, G_i = tmu.fractional_zener(alpha, k, N_branches, f_min, f_max)
 #print des valeurs générées
 print(f"tau_i ({len(tau_i)} branches) : {tau_i}")
 print(f"G_i (brut) : {G_i}")
-
-
-G_i = G_i * 3.0 #on garde la raideur globale E/3
 
 #pas de temps doit s'adapter au temps de relaxation le plus court généré
 #on prend le plus petit tau généré divisé par le div_tau
