@@ -90,8 +90,8 @@ model.nu = nu
 #tau_i = np.array([0.1]) # taurelax= k*tau_fluage avec k=0.1 et tau_fluage =1 , taurelax=0.1
 
 
-alpha_fractionnaire = 0.5  # (entre 0 et 1)
-k_ratio = 0.1  #ratio entre la rigidité à long terme (E_inf) et instantanée (E_0)
+alpha = 0.5  # (entre 0 et 1)
+k = 0.1  #ratio entre la rigidité à long terme (E_inf) et instantanée (E_0)
 
 #bornes (fréquences min et max)
 tau_min = 1e-2  #le temps le plus rapide
@@ -104,7 +104,7 @@ f_max = 1.0 /tau_min
 N_branches = 5 
 
 #tau et g a utiliser avec le solveur
-tau_i, G_i = tmu.fractional_zener(alpha_fractionnaire, k_ratio, N_branches, f_min, f_max)
+tau_i, G_i = tmu.fractional_zener(alpha, k, N_branches, f_min, f_max)
 
 #print des valeurs générées
 print(f"tau_i ({len(tau_i)} branches) : {tau_i}")
