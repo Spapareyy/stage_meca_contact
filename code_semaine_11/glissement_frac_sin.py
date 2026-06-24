@@ -91,7 +91,7 @@ model.nu = nu
 
 
 alpha_fractionnaire = 0.5  # (entre 0 et 1)
-k_ratio = 0.1              #ratio entre la rigidité à long terme (E_inf) et instantanée (E_0)
+k_ratio = 0.1  #ratio entre la rigidité à long terme (E_inf) et instantanée (E_0)
 
 #bornes (fréquences min et max)
 tau_min = 1e-2  #le temps le plus rapide
@@ -106,22 +106,17 @@ N_branches = 5
 #tau et g a utiliser avec le solveur
 tau_i, G_i = tmu.fractional_zener(alpha_fractionnaire, k_ratio, N_branches, f_min, f_max)
 
-# --- VÉRIFICATION ANTI-CRASH ---
-print("\n--- Paramètres du Modèle Fractionnaire ---")
+#print des valeurs générées
 print(f"tau_i ({len(tau_i)} branches) : {tau_i}")
 print(f"G_i (brut) : {G_i}")
 
-#on doit multiplier G_i par le module élastique de base
-# (car la fonction renvoie souvent des valeurs normalisées)
+
 G_i = G_i * 3.0 #on garde la raideur globale E/3
 
 #pas de temps doit s'adapter au temps de relaxation le plus court généré
 #on prend le plus petit tau généré divisé par le div_tau
 tau_ref = tau_min
 pas_temps = tau_ref / div_tau
-
-
-
 
 
 
