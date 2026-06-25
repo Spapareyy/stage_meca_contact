@@ -18,20 +18,20 @@ if len(sys.argv) > 5:
     suff_temps_attente = sys.argv[5]
     suff_v_cible = f"{v_cible:.2f}"
     if len(sys.argv) > 6:
-        div_tau = float(sys.argv[6])
-        suff_div_tau = sys.argv[6]  #on garde le texte brut pour le nom du fichier
+        div_temps = float(sys.argv[6])
+        suff_div_temps = sys.argv[6]  #on garde le texte brut pour le nom du fichier
     else:
-        div_tau = 30.0
-        suff_div_tau = "30"
+        div_temps = 30.0
+        suff_div_temps = "30"
 else: #si execution via spyder
     import datetime
     temps_attente = 0
-    load = 30#valeur contact complet: environ 15
+    load = 20#valeur contact complet: 60
     hurst = 0.7
-    v_cible= 3.5 #pour avoir la meme vitesse peu importe la valeur de N
-    div_tau = 20.0
-    pas = int(10*div_tau)    #changer valeur pour décaler de x pas
-    suff_div_tau = str(div_tau)
+    v_cible= 4 #pour avoir la meme vitesse peu importe la valeur de N
+    div_temps = 2.0
+    pas = int(400)    #changer valeur pour décaler de x pas
+    suff_div_temps = str(div_temps)
     suff_load = str(load)
     suff_hurst = str(hurst)
     suff_pas = str(pas)
@@ -66,7 +66,7 @@ h0 = 1 #c'est la pente RMS visée
 #on normalise la surface par sa propre pente, puis on applique h0
 surface = (surface / rms_slope) * h0
 
-load=tm.Statistics2D.computeFullContactPressure(surface)
+#load=tm.Statistics2D.computeFullContactPressure(surface)
 x = np.linspace(0, L, N, endpoint=False)
 #calcul du psd
 C_q_2D = tm.Statistics2D.computePowerSpectrum(surface)
@@ -82,7 +82,7 @@ model = tm.Model(tm.model_type.basic_2d, [L, L], [N, N])
 model.E= 1.
 nu=0.5
 model.nu = nu
-load*=model.E_star*10/L 
+#load*=model.E_star*100/L 
 #on multiplie la force normale par la vraie raideur du materiau pour avoir les bonnes dimensions et on divise par L pour les bonnes dimensions
 # car load est en metres , model E star en Pascals et L en metres
 
@@ -93,34 +93,27 @@ load*=model.E_star*10/L
 ##### matériau fractionnaire  #####
 
 alpha = 0.5  # (entre 0 et 1)
-k = 0.1  #ratio entre la rigidité à long terme (E_inf) et instantanée (E_0)
+k = 1e-2  #ratio entre la rigidité à long terme (E_inf) et instantanée (E_0)
 
-#bornes (fréquences min et max)
-tau_min = 1e-2  #le temps le plus rapide
-tau_max = 1e2   #le temps le plus lent 
-
-f_min = 1.0/tau_max  
-f_max = 1.0/tau_min
 
 #nombre de branches discrètes souhaitées
-N_branches = 5 
+N_branches = 30 
 
 #tau et g a utiliser avec le solveur
-tau_i, G_i = tmu.fractional_zener(alpha, k, N_branches, f_min, f_max)
+tau_i, G_i = tmu.fractional_zener(alpha, k, N_branches)
 
 #print des valeurs générées
 print(f"tau_i ({len(tau_i)} branches) : {tau_i}")
-print(f"G_i (brut) : {G_i}")
-
-#pas de temps doit s'adapter au temps de relaxation le plus court généré
-#on prend le plus petit tau généré divisé par le div_tau
-tau_ref = tau_min
-pas_temps = tau_ref / div_tau
-
+print(f"G_i : {G_i}")
 
 
 if "erreur" in nom_doss:
-    pas = int(pas * div_tau)
+    pas = int(pas *div_temps)
+
+dx=L/N
+
+#on adapte le pas de temps en fonction du temps final souhaité en faisant varier div_temps plus haut
+pas_temps = (dx / v_cible) / div_temps
 
 
 solver = tm.MaxwellViscoelastic(model, surface, 1e-9,
@@ -129,7 +122,6 @@ solver = tm.MaxwellViscoelastic(model, surface, 1e-9,
                                 characteristic_times=tau_i)
 
 #solveur
-dx=L/N
 dS = dx * dx
 historique_ft = []  #pour enregistrer l'evolution de ft et la plot qu'a la fin
 historique_A_reel = [] #aire de contact reelle
@@ -157,7 +149,7 @@ for i in range(temps_attente):
 #(- car on reculait sur l'axe y avec shift=-1)
 dy_step = -v_cible * pas_temps
 
-#on précalcule le déphasage de Fourier (le théorème du retard) une seule fois
+#on calcule le déphasage de Fourier une seule fois
 phase_shift = np.exp(-1j * qy * dy_step)
 #boucle
 #on boucle exactement 'pas + 1' fois pour s'arrêter sur le pas demandé
@@ -172,11 +164,11 @@ for i in range(pas + 1):
     historique_A_reel.append(A_reel)
     temps.append(i * pas_temps) # pas * time_step
     if i < pas:
-        # Décalage spectral de la surface
+        #décalage spectral de la surface
         surf_fft = np.fft.rfft2(surface)
         surface[:] = np.fft.irfft2(surf_fft * phase_shift, s=(N, N))
         
-        # Décalage spectral de la pente
+        #décalage spectral de la pente
         pente_fft = np.fft.rfft2(pente_x)
         pente_x[:] = np.fft.irfft2(pente_fft * phase_shift, s=(N, N))
 #%%
@@ -244,7 +236,8 @@ V = v_cible   #vitesse de glissement (distance d'un pas / temps d'un pas)
 omega = qx * V             #fréquence d'excitation vue par le solide déformable (rad/s)
 Surface_totale = L * L
 
-#calcul de la force de frottement théorique
+#calcul de la force de frottement théorique d'apres
+#article de persson "Theory of rubber friction: Nonstationary sliding", 2002
 F_analytique_t = []
 
 for i, t in enumerate(temps):
@@ -257,8 +250,9 @@ for i, t in enumerate(temps):
         #cette formule inclut la mémoire de la position initiale (g* oscillation)
         oscillation = np.exp(-t/tau) * np.exp(-1j * omega * t)
         reponse_t = terme_stationnaire * (1 - oscillation) + (g * oscillation) #dapres equation 39, g* oscillation est la relaxation de la contrainte initiale
-        
+        # a t=0 on a reponse_t=g
         reponse_totale += reponse_t  #on additionne les réponses de chaque branche
+    
     
     E_perte_t = 2 * np.imag(reponse_totale) / (1 - nu) #on garde uniquement la partie imaginaire 
     contribution = qx*q_norm * C_q_2D * E_perte_t  #q*cos(phi)= qnorm*(qx/qnorm)= qx
@@ -280,7 +274,7 @@ F_analytique_t = np.array(F_analytique_t)
 #%%
 
 ##### méthode carbone putignano #####
-k = 0.1
+k = 1e-2
 tau = 1.0  
 vit = v_cible 
 
@@ -301,7 +295,6 @@ for j in range(len(G_i)):
     
     #formule de la rigidité complexe pour une branche de maxwell
     E_complexe += delta_E_j * (1j * omega_car * tau_j) / (1 + 1j * omega_car * tau_j)
-
 
 
 #calcul du modificateur de la matrice de Green (Souplesse dynamique)
@@ -342,12 +335,28 @@ pente_spectrale_fft = 1j * qy * h_fft
 p_analytique = np.fft.irfft2(p_fft, s=(N, N))
 pente_analytique = np.fft.irfft2(pente_spectrale_fft, s=(N, N))
 
-ft_parseval = np.sum((load+p_analytique) * pente_analytique) * dS
-print(f"Force  de frottement analytique  : {ft_parseval:.4e}")
+ft_parseval = np.sum(p_analytique * pente_analytique) * dS
+print(f"Force  de frottement approximée  : {ft_parseval:.4e}")
 
 
 
+#%%
+#### equation mainardi
 
+
+#matrice green
+G_mainardi = Green * M_qv
+G_mainardi[0, 0] = 1.0
+
+p_fft_mainardi = h_fft / G_mainardi
+p_fft_mainardi[0, 0] = 0.0  # pression moyenne nulle
+
+p_mainardi_real = np.fft.irfft2(p_fft_mainardi, s=(N, N))
+ft_mainardi = np.sum(p_mainardi_real * pente_analytique) * dS
+
+print(f"Force de frottement (Mainardi) : {ft_mainardi:.4e}")
+
+#%%
 
 #calcul de l'erreur relative entre tamaas et carbone-putignano
 erreur_relative = abs(historique_ft[-1] - ft_carbone) / ft_carbone * 100
@@ -371,9 +380,10 @@ ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson")
 #ajout de l'asymptote sur le graphique
 ax_fx.axhline(y=ft_carbone, color='b', linestyle='-.', label="Carbone-Putignano")
 ax_fx.axhline(y=ft_parseval, color='g', linestyle=':', label="Parseval")
+ax_fx.axhline(y=ft_mainardi, color='grey', linestyle='-', label="Mainardi")
 
 #ajout des infos de force normale et de l'erreur
-texte_info = (f"Force normale (Load) : {force_normale:.2e} \n" f"Erreur Relative entre tamaas et carbone: {erreur_relative:.2f} % \n" f"Ft en régime permanent (tamaas) : {historique_ft[-1]:.2e}. \n" f"Erreur Tamaas/Parseval : {err_tp:.2e} % \n" f"Ft (Parseval) : {ft_parseval:.2e} \n"f"Ft(Carbone) : {ft_carbone:.2e}")
+texte_info = (f"Force normale (Load) : {force_normale:.2e} \n" f"Erreur Relative entre tamaas et carbone: {erreur_relative:.2f} % \n" f"Ft en régime permanent (tamaas) : {historique_ft[-1]:.2e}. \n" f"Erreur Tamaas/Parseval : {err_tp:.2e} % \n" f"Ft (Parseval) : {ft_parseval:.2e} \n"f"Ft(Carbone) : {ft_carbone:.2e} \n"f"Ft(Mainardi) : {ft_mainardi:.2e}")
 
 #on place la boîte de texte en haut à gauche (axes coords)
 ax_fx.text(0.4, 0.55, texte_info, transform=ax_fx.transAxes, fontsize=10,verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
@@ -399,9 +409,9 @@ with open(chemin_pic, "w") as f:
 dossier_erreur = "resultat_erreur_tau_diff_sinus_v_08"
 os.makedirs(dossier_erreur, exist_ok=True)
 
-chemin_erreur = f"{dossier_erreur}/erreur_div_{suff_div_tau}.txt"
+chemin_erreur = f"{dossier_erreur}/erreur_div_{suff_div_temps}.txt"
 with open(chemin_erreur, "w") as f:
-    f.write(f"{div_tau}\t{err_tp}\n")
+    f.write(f"{div_temps}\t{err_tp}\n")
     
 if "snakemake" in sys.modules or len(sys.argv) > 5:
     # snakemake
