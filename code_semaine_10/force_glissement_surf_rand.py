@@ -276,7 +276,7 @@ pente_spectrale_fft = 1j * qy * h_fft
 p_analytique = np.fft.irfft2(p_fft, s=(N, N))
 pente_analytique = np.fft.irfft2(pente_spectrale_fft, s=(N, N))
 
-ft_parseval = np.sum((load+p_analytique) * pente_analytique) * dS
+ft_parseval = np.sum(p_analytique * pente_analytique) * dS
 print(f"Force  de frottement analytique  : {ft_parseval:.4e}")
 
 #%%

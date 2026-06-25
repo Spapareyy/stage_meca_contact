@@ -25,7 +25,7 @@ if len(sys.argv) > 5:
 else: #si execution via spyder
     import datetime
     temps_attente = 0
-    load = 15  #valeur contact complet: environ 15
+    load = 12  #valeur contact complet: environ 15
     hurst = 0.7
     v_cible= 0.8 #pour avoir la meme vitesse peu importe la valeur de N
     div_tau = 20.0
@@ -293,7 +293,7 @@ pente_spectrale_fft = 1j * qy * h_fft
 p_analytique = np.fft.irfft2(p_fft, s=(N, N))
 pente_analytique = np.fft.irfft2(pente_spectrale_fft, s=(N, N))
 
-ft_parseval = np.sum((load+p_analytique) * pente_analytique) * dS
+ft_parseval = np.sum(p_analytique * pente_analytique) * dS
 print(f"Force  de frottement analytique  : {ft_parseval:.4e}")
 
 
