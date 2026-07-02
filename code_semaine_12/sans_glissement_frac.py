@@ -123,7 +123,7 @@ solver = tm.MaxwellViscoelastic(model, surface, 1e-9,
 
 #solveur
 dS = dx * dx
-n_steps = 3000
+n_steps = 10000
 historique_A_reel = []
 historique_temps = []
 
@@ -192,9 +192,9 @@ plt.figure(figsize=(8, 5))
 #on utilise une échelle semi-logarithmique : temps en log, aire en linéaire
 plt.semilogx(historique_temps, historique_A_reel, 'b-', label=f"$\\nu=0.5$ (Alpha={alpha})")
 
-plt.xlabel("Temps (s)")
+plt.xlabel("Temps")
 plt.ylabel("Aire de contact réelle $A(t)$")
-plt.title(f"Fluage : Évolution de l'aire selon le temps (Load={load})")
+plt.title(f"Évolution de l'aire selon le temps (Load={load})")
 plt.grid()
 plt.legend()
 
