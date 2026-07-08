@@ -1,11 +1,12 @@
 import tamaas as tm
+tm.initialize(8)
 import numpy as np
 
 import matplotlib.pyplot as plt
 import sys
 import os
 import tamaas.utils as tmu
-N=200
+N=512
 if len(sys.argv) > 5:
     load = float(sys.argv[1])
     suff_load = sys.argv[1]
@@ -21,15 +22,15 @@ if len(sys.argv) > 5:
         div_temps = float(sys.argv[6])
         suff_div_temps = sys.argv[6]  #on garde le texte brut pour le nom du fichier
     else:
-        div_temps = 30.0
-        suff_div_temps = "30"
+        div_temps = 5.0
+        suff_div_temps = "5.0"
 else: #si execution via spyder
     import datetime
     temps_attente = 0
     load = 1 #valeur contact complet: 60
     hurst = 0.7
     v_cible= 4 #pour avoir la meme vitesse peu importe la valeur de N
-    div_temps = 5.0
+    div_temps = 1.0
     pas = int(200)    #changer valeur pour décaler de x pas
     suff_div_temps = str(div_temps)
     suff_load = str(load)
@@ -44,6 +45,13 @@ if len(sys.argv) > 7:
     nom_doss = sys.argv[7]
 else:
     nom_doss = "full_contact_sin_tests_spyder"
+    
+if len(sys.argv) > 8:
+    alpha = float(sys.argv[8])
+    suff_alpha = sys.argv[8]
+else:
+    alpha = 0.5  #Spyder
+    suff_alpha = "0.5"
 os.makedirs(nom_doss, exist_ok=True)
 
 
@@ -91,8 +99,6 @@ model.nu = nu
 
 
 ##### matériau fractionnaire  #####
-
-alpha = 0.5  # (entre 0 et 1)
 k = 0.1  #ratio entre la rigidité à long terme (E_inf) et instantanée (E_0)
 
 
@@ -113,28 +119,54 @@ if "erreur" in nom_doss:
 dx=L/N
 
 #on adapte le pas de temps en fonction du temps final souhaité en faisant varier div_temps plus haut
-pas_temps = 0.05 / div_temps
 
+#configuration des pas géométriques
+n_steps = 100  # 100 pas suffisent amplement avec cette méthode !
+t_start = 0.001
+t_end = 1000.0
+# On ajoute +1 car on a besoin de N+1 points pour faire N différences (intervalles)
+temps_points = np.geomspace(t_start, t_end, num=n_steps + 1)
 
-solver = tm.MaxwellViscoelastic(model, surface, 1e-9,
-                                time_step=pas_temps,
-                                shear_moduli=G_i,
-                                characteristic_times=tau_i)
-
-#solveur
 dS = dx * dx
-n_steps = 10000
 historique_A_reel = []
 historique_temps = []
 
 #boucle
 for i in range(n_steps):
+    #calcul du pas de temps spécifique à chaque itération
+    dt_dynamique = temps_points[i+1] - temps_points[i]
+    
+    #nouveau solveur associé au pas de temps de chaque itération
+    solver = tm.MaxwellViscoelastic(
+        model, 
+        surface, 
+        1e-9,
+        time_step=dt_dynamique,
+        shear_moduli=G_i,
+        characteristic_times=tau_i
+    )
+    
+    #
+    state_vars = solver.state_fields
+    
+    #si ce n'est pas le tout premier pas, on rend la mémoire au solveur
+    if i > 0:
+        for field in state_vars:
+            state_vars[field][:] = model[field]
+            
+    #solveur pour un pas
     solver.solve(load)
     
-    #aire à chaque instant
+    #on garde la mémoire de l'étape précédente pour la nouvelle étape
+    for field in state_vars:
+        model[field] = state_vars[field]
+        
+    #enregistrement des résultats pour les graphs
     A_reel = np.sum(model.traction > 0) * dS
     historique_A_reel.append(A_reel)
-    historique_temps.append(i * pas_temps)
+    historique_temps.append(temps_points[i+1])
+    
+    del solver
 
 #%%
 ##### tracé des surfaces  #####
@@ -171,7 +203,7 @@ ax2.plot(x,p_cut.real, color='green', alpha=0.3, label='Pression')
 ax2.set_ylabel("Pression", color='green')
 ax1.grid()
 fig_def.legend(loc='upper right')
-fig_def.savefig(f"{nom_doss}/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}.png")
+fig_def.savefig(f"{nom_doss}/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}_dt_{suff_div_temps}.png")
 
 
 if len(sys.argv) > 3:
@@ -180,30 +212,40 @@ else:
     plt.show()
  
 
-chemin_txt = f"{nom_doss}/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}.txt"
+chemin_txt = f"{nom_doss}/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}_dt_{suff_div_temps}.txt"
 with open(chemin_txt, "w") as f:
     
     f.write(f"Aire_reelle_initiale = {historique_A_reel[0]}\nAire_reelle_finale = {historique_A_reel[0]}\n")
 
 #%%
+fig_def.legend(loc='upper right')
+    
+fig_def.savefig(f"{nom_doss}/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}_alpha_{suff_alpha}_dt_{suff_div_temps}.png")
+if len(sys.argv) > 3:
+    plt.close(fig_def)
+else:
+    plt.show()
 
+chemin_txt = f"{nom_doss}/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}_alpha_{suff_alpha}_dt_{suff_div_temps}.txt"
+with open(chemin_txt, "w") as f:
+    f.write(f"Aire_reelle_initiale = {historique_A_reel[0]}\nAire_reelle_finale = {historique_A_reel[-1]}\n")
+
+#%% Tracé de l'aire
 plt.figure(figsize=(8, 5))
-
-#on utilise une échelle semi-logarithmique : temps en log, aire en linéaire
 plt.semilogx(historique_temps, historique_A_reel, 'b-', label=f"$\\nu=0.5$ (Alpha={alpha})")
-
 plt.xlabel("Temps")
 plt.ylabel("Aire de contact réelle $A(t)$")
 plt.title(f"Évolution de l'aire selon le temps (Load={load})")
 plt.grid()
 plt.legend()
 
-#sauvegarde 
-plt.savefig(f"{nom_doss}/fluage_aire_vs_temps_load_{load}.png", bbox_inches='tight')
+plt.savefig(f"{nom_doss}/fluage_aire_vs_temps_load_{load}_alpha_{suff_alpha}.png", bbox_inches='tight')
 
-    
+chemin_historique = f"{nom_doss}/historique_fluage_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}_alpha_{suff_alpha}_dt_{suff_div_temps}.txt"
+np.savetxt(chemin_historique, np.column_stack([historique_temps, historique_A_reel]), header="Temps Aire_reelle")
+
 if "snakemake" in sys.modules or len(sys.argv) > 5:
-    # snakemake
+     # snakemake
     plt.close('all')
 else:
     #spyder
