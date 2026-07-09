@@ -121,10 +121,10 @@ dx=L/N
 #on adapte le pas de temps en fonction du temps final souhaité en faisant varier div_temps plus haut
 
 #configuration des pas géométriques
-n_steps = 100  # 100 pas suffisent amplement avec cette méthode !
+n_steps = 100  # 100 pas entre le début et le temps d'attente 
 t_start = 0.001
 t_end = 1000.0
-# On ajoute +1 car on a besoin de N+1 points pour faire N différences (intervalles)
+#on ajoute +1 car on a besoin de N+1 points pour faire N différences (intervalles)
 temps_points = np.geomspace(t_start, t_end, num=n_steps + 1)
 
 dS = dx * dx
