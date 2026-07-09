@@ -6,13 +6,15 @@ for i in range(10, 100, 10):
     
 HURSTS = ["0.8"]
 PAS = "400" 
-
+vit=[]
+for i in range (0.1,1.1,0.1):
+    vit.append(i)
 rule all:
     input:
         # Snakemake va créer la liste de tous les fichiers attendus pour toutes les combinaisons
-        expand("resultats/deformee_step_{pas}_load_{load}_H_{hurst}.png", pas=PAS, load=LOADS, hurst=HURSTS),
-        expand("resultats/deformee_step_{pas}_load_{load}_H_{hurst}.txt", pas=PAS, load=LOADS, hurst=HURSTS),
-        expand("resultats/courbe_fx_total_step_{pas}_load_{load}_H_{hurst}.png", pas=PAS, load=LOADS, hurst=HURSTS)
+        expand("resultats/deformee_step_{pas}_load_{load}_H_{hurst}.png", pas=PAS, load=LOADS, hurst=HURSTS, V_cible=vit),
+        expand("resultats/deformee_step_{pas}_load_{load}_H_{hurst}.txt", pas=PAS, load=LOADS, hurst=HURSTS, V_cible=vit),
+        expand("resultats/courbe_fx_total_step_{pas}_load_{load}_H_{hurst}.png", pas=PAS, load=LOADS, hurst=HURSTS, V_cible=vit)
 
 rule generer_deformee:
     output:
@@ -21,4 +23,4 @@ rule generer_deformee:
         curve="resultats/courbe_fx_total_step_{pas}_load_{load}_H_{hurst}.png" 
     shell:
         # Snakemake va injecter chaque charge automatiquement ici
-        "python force_glissement_sinus.py {wildcards.load} {wildcards.hurst} {wildcards.pas}"
+        "python force_glissement_surf_sinus.py {wildcards.load} {wildcards.vit} {wildcards.hurst} {wildcards.pas}"

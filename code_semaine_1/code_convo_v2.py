@@ -7,8 +7,8 @@ from scipy.optimize import LinearConstraint
 N=200
 L=1
 nu=0.3
-E=69e9 #alu
-p0=10e5 #pression atmosphérique ?
+E=1 #alu
+p0=10e5/69e9 #pression atmosphérique ?
 pi=np.pi
 
 lambda_l=L/2   #plus grande longueur d'onde possible 
@@ -49,8 +49,8 @@ plt.figure(1)
 plt.plot(x,u_num[N//2,:],label='numérique')
 plt.plot(x,u_an[N//2,:],label='analytique')
 
-plt.xlabel("position sur la surface du matériau en mètres")
-plt.ylabel("déplacement u3 en mètres")
+plt.xlabel(r"Position adimensionnée $x/L$")
+plt.ylabel(r"Déplacement adimensionné $u_3/L$")
 plt.title("déplacement vertical du solide déformable selon x1 en x2 = L/2 ")
 
 plt.legend()
@@ -137,8 +137,8 @@ plt.figure(2)
 plt.plot(x, p_numerique, 'o', label='numérique')
 plt.plot(x, p_analytique, '-', label='analytique', color='red')
 
-plt.xlabel('position x en mètres')
-plt.ylabel('pression en Pascals')
+plt.xlabel(r"Position adimensionnée $x/L$")
+plt.ylabel(r"Pression adimensionnée $p/E^*$")
 plt.title('Comparaison de la pression analytique et numérique')
 plt.legend()
 
@@ -163,11 +163,11 @@ fig, ax1 = plt.subplots()
 
 ax1.plot(x, h[0, :], 'k--', label='solide rigide')
 ax1.plot(x, u3_opt[0, :], 'b-', label='solide déformable')
-ax1.set_ylabel("déplacement u3 en mètres")
-ax1.set_xlabel("position x en mètres")
+ax1.set_ylabel(r"Déplacement adimensionné $u_z/L$")
+ax1.set_xlabel(r"Position adimensionnée $x/L$")
 ax2 = ax1.twinx()
 ax2.fill_between(x, 0, p_opt[0, :], color='green', label='pression')
-ax2.set_ylabel("pression en pascals",color='green')
+ax2.set_ylabel(r"Pression adimensionnée $p/E^*$", color='green')
 
 
 h1, l1 = ax1.get_legend_handles_labels()
@@ -187,19 +187,19 @@ plt.suptitle("Comparaison de la topographie entre le résultat analytique et num
 #numérique
 plt.subplot(1, 2, 1)
 plt.imshow(p_opt, cmap='viridis')
-plt.colorbar(label='Pression en pascals')
+plt.colorbar(label=r"Pression adimensionnée $p/E^*$")
 plt.title('Numérique (L-BFGS-B)')
-plt.xlabel('x en mètres')
-plt.ylabel('y en mètres')
+plt.xlabel(r"Position adimensionnée $x/L$")
+plt.ylabel(r"Position adimensionnée $y/L$")
 
 #analytique
 plt.subplot(1, 2, 2)
 p_analytique_2d = np.tile(p_analytique, (N, 1))
 plt.imshow(p_analytique_2d, extent=[0, L, 0, L], origin='lower', cmap='viridis')
-plt.colorbar(label='Pression en pascals')
+plt.colorbar(label=r"Pression adimensionnée $p/E^*$")
 plt.title('Analytique ')
-plt.xlabel('x en mètres')
-plt.ylabel('y en mètres')
+plt.xlabel(r"Position adimensionnée $x/L$")
+plt.ylabel(r"Position adimensionnée $y/L$")
 
 plt.tight_layout() 
 plt.show()
@@ -218,7 +218,8 @@ H=0.9 # nombre de Hurst
 alpha=(2*(H+1))
 
 phi = np.random.uniform(-pi, pi, (N, N))
-
+bruit_spatial = np.random.randn(N, N)
+phi = np.angle(np.fft.fft2(bruit_spatial))
 #filtre de q avant la puissance
 ampli = np.zeros_like(qnorm)
 masque = (qnorm >= q_l) & (qnorm <= q_s)
@@ -234,8 +235,8 @@ h_rug_s=np.fft.ifft2(h_rug_f)
 plt.figure(5)
 
 plt.plot(x,h_rug_s[0,:])
-plt.xlabel("position x en mètre")
-plt.ylabel("hauteur de rugosité en micromètre")
+plt.xlabel(r"Position adimensionnée $x/L$")
+plt.ylabel(r"Hauteur adimensionnée $h/L$")
 plt.title(" Rugosité générée aléatoirement en y=0 pour H=0.3")
 
 
@@ -275,9 +276,8 @@ plt.loglog(q_final, C_num_1d, 'o', alpha=0.1,label=f'numérique (pente {pente:.2
 #tracé du psd analytique en loglog
 plt.loglog(q_final, C_ana_1d, 'r-', label=f'analytique (pente -{alpha:.2f})')
 
-plt.xlabel('Nombre d\'onde q [rad/m]')
-plt.ylabel('PSD [m⁴]')
-plt.title('Comparaison du PSD : analytique vs numérique')
+plt.xlabel(r"Nombre d'onde adimensionné $qL$")
+plt.ylabel(r"PSD adimensionnée $C(q)/L^4$")
 plt.legend()
 plt.grid()
 plt.show()
@@ -297,9 +297,9 @@ im = plt.imshow(np.log10(np.fft.fftshift(C_num)),
                 extent=[-q_max, q_max, -q_max, q_max], 
                 cmap='viridis')
 plt.colorbar(im, label='log10(PSD)')
-plt.title(f'PSD en Donut (alpha={alpha:.2f})')
-plt.xlabel("Fréquence qx [rad/m]")
-plt.ylabel("Fréquence qy [rad/m]")
+plt.title(f'PSD (alpha={alpha:.2f})')
+plt.xlabel(r"Fréquence adimensionnée $q_x L$")
+plt.ylabel(r"Fréquence adimensionnée $q_y L$")
 plt.show()
 
 
@@ -356,17 +356,18 @@ fig, ax1 = plt.subplots()
 
 ax1.plot(x, h[0, :], 'k--', label='solide rigide')
 ax1.plot(x, u3_opt[0, :], 'b-', label='solide déformable')
-ax1.set_ylabel("déplacement u3 en mètres")
-ax1.set_xlabel("position x en mètres")
+ax1.set_ylabel(r"Déplacement adimensionné $u_z/L$")
+ax1.set_xlabel(r"Position adimensionnée $x/L$")
 ax2 = ax1.twinx()
 ax2.fill_between(x, 0, p_opt[0, :], color='green', label='pression',alpha=0.3)
-ax2.set_ylabel("pression en pascals",color='green')
+ax2.set_ylabel(r"Pression adimensionnée $p/E^*$", color='green')
 
 
 h1, l1 = ax1.get_legend_handles_labels()
 h2, l2 = ax2.get_legend_handles_labels()
-ax2.legend(h1+h2, l1+l2, loc='upper right')
-plt.title(rf"solide déformable vs corps rigide avec médiane corps rigide={med*1e6:.1f}$\mu$m")
+ax2.legend(h1+h2, l1+l2, loc='upper left')
+plt.grid()
+plt.title(rf"Déformation d'une surface déformable en contact avec un solide rigid avec médiane corps rigide={med*1e6:.1f}$\mu$m")
 plt.show()
 
 
@@ -374,16 +375,16 @@ plt.figure(6, figsize=(12, 5))
 plt.subplot(1, 2, 1)
 plt.title(f"map 2d de la rugosité générée aléatoirement pour H = {H}",y=1.05)
 plt.imshow(h_rug_s.real, extent=[0, L, 0, L], origin='lower', cmap='viridis')
-plt.colorbar(label='Hauteur [µm]')
-plt.xlabel('position x en mètre')
-plt.ylabel('position y en mètre')
+plt.colorbar(label=r"Hauteur adimensionnée $h/L$")
+plt.xlabel(r"Position adimensionnée $x/L$")
+plt.ylabel(r"Position adimensionnée $y/L$")
 
 plt.subplot(1, 2, 2)
 plt.title(f"map 2d de la pression pour H = {H}",y=1.05)
 plt.imshow(p_opt, extent=[0, L, 0, L], origin='lower', cmap='viridis')
-plt.colorbar(label='pression en MPa')
-plt.xlabel('position x en mètre')
-plt.ylabel('position y en mètre')
+plt.colorbar(label=r"Pression adimensionnée $p/E^*$")
+plt.xlabel(r"Position adimensionnée $x/L$")
+plt.ylabel(r"Position adimensionnée $y/L$")
 
 plt.show()
 
@@ -437,7 +438,7 @@ med=0 # mediane du corps rigide
 h=h_rug_s.real+med
 h=(h/np.std(h))*1e-6
 
-W=6e4 # force imposée
+W=6e4/69e9 # force imposée
 
 dS = (L / N)**2 #surface d'un element
 
@@ -485,17 +486,21 @@ fig, ax1 = plt.subplots()
 
 ax1.plot(x, h[0, :]*1e6, 'k--', label='solide rigide',zorder=11)
 ax1.plot(x, u3_opt[0, :]*1e6, 'b-', label='solide déformable',zorder=10)
-ax1.set_ylabel("déplacement u3 en micromètres")
-ax1.set_xlabel("position x en mètres")
+
+# Même si ici tu multiplies par 1e6 pour la visibilité, on garde l'étiquette adimensionnée 
+# pour être physiquement inattaquable et cohérent avec le reste !
+ax1.set_ylabel(r"Déplacement adimensionné $u_z/L$")
+ax1.set_xlabel(r"Position adimensionnée $x/L$")
 ax2 = ax1.twinx()
 ax2.fill_between(x, 0, p_opt[0, :], color='green', label='pression',zorder=1,alpha=0.3)
-ax2.set_ylabel("pression en pascals",color='green')
+ax2.set_ylabel(r"Pression adimensionnée $p/E^*$", color='green')
 
 
 h1, l1 = ax1.get_legend_handles_labels()
 h2, l2 = ax2.get_legend_handles_labels()
 ax2.legend(h1+h2, l1+l2, loc='upper right')
 plt.title(rf"solide déformable vs corps rigide avec médiane corps rigide={med*1e6:.1f}$\mu$m")
+plt.grid()
 plt.show()
 
 #%%

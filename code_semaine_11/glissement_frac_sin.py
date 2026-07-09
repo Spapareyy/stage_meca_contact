@@ -162,7 +162,7 @@ if temps_attente > 0:
         #on calcule le nombre exact de décades entre le début et la fin
         nb_decades = np.log10(temps_attente) - np.log10(t_start)
         
-        # 2. On fixe une résolution constante (ex: 25 points par décade)
+        #on fixe une résolution constante (ex: 25 points par décade)
         #on utilise int() car n_steps doit être un nombre entier
         n_steps_attente = int(25 * nb_decades)
         temps_points = np.geomspace(t_start, temps_attente, num=n_steps_attente + 1)

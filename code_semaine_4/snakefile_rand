@@ -21,4 +21,4 @@ rule generer_deformee:
         curve="resultats/courbe_fx_total_step_{pas}_load_{load}_H_{hurst}.png" 
     shell:
         # Snakemake va injecter chaque charge automatiquement ici
-        "python force_glissement_carbone_putignano.py {wildcards.load} {wildcards.hurst} {wildcards.pas}"
+        "python force_glissement_surf_rand.py {wildcards.load} {wildcards.vit} {wildcards.hurst} {wildcards.pas}"

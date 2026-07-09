@@ -6,7 +6,7 @@ import sys
 import os
 
 N=200
-if len(sys.argv) > 4:
+if len(sys.argv) > 5:
     load = float(sys.argv[1])
     suff_load = sys.argv[1]
     v_cible = float(sys.argv[2])
@@ -14,28 +14,33 @@ if len(sys.argv) > 4:
     suff_hurst = sys.argv[3]
     pas = int(sys.argv[4])
     suff_pas = sys.argv[4]
+    temps_attente = int(sys.argv[5])
+    suff_temps_attente = sys.argv[5]
     suff_v_cible = f"{v_cible:.2f}"
 else: #si execution via spyder
     import datetime
+    temps_attente = 0
     load = 1
     hurst = 0.7
     pas = 200    #changer valeur pour décaler de x pas
-    v_cible= 0.9 #pour avoir la meme vitesse peu importe la valeur de N
+    v_cible= 0.16 #pour avoir la meme vitesse peu importe la valeur de N
     suff_load = str(load)
     suff_hurst = str(hurst)
     suff_pas = str(pas)
     suff_v_cible = f"{v_cible:.2f}"
+    suff_temps_attente = str(temps_attente)
     timestamp = datetime.datetime.now().strftime("%Hh%Mm%Ss")
     suff_load = f"{load}_spyder_{timestamp}"
 
-os.makedirs("resultats_rand", exist_ok=True)
+nom_doss="full_contact_rand_differents_temps"
+os.makedirs(nom_doss, exist_ok=True)
 
 
 L =1.
 spectrum = tm.Isopowerlaw2D()
 spectrum.q0 = 10
 spectrum.q1 = 10
-spectrum.q2 = 70
+spectrum.q2 = 60
 spectrum.hurst = hurst
 generator = tm.SurfaceGeneratorFilter2D([N, N])
 generator.spectrum = spectrum
@@ -83,10 +88,16 @@ temps = []
 pente_y, pente_x = np.gradient(surface, dx)
 
 
+h_fft_init = np.fft.rfft2(surface)
+
+#l'axe de défilement dans la boucle est l'axe y (axis=1), on utilise donc qy
+pente_spectrale_init = 1j * qy * h_fft_init 
+
+#retour dans l'espace réel pour obtenir la grille des pentes
+pente_x = np.fft.irfft2(pente_spectrale_init, s=(N, N))
 
 
-    
-temps_attente = 0
+
 for i in range(temps_attente):
     solver.solve(load)
 
@@ -136,7 +147,7 @@ ax2.plot(x,p_cut, color='green', alpha=0.3, label='Pression')
 ax2.set_ylabel("Pression", color='green')
 ax1.grid()
 fig_def.legend(loc='upper right')
-fig_def.savefig(f"resultats_rand/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}.png")
+fig_def.savefig(f"{nom_doss}/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}.png")
 
 if len(sys.argv) > 3:
     plt.close(fig_def)
@@ -148,7 +159,7 @@ else:
 fn = load * L * L
 mu_final = ft / fn
 
-chemin_txt = f"resultats_rand/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}.txt"
+chemin_txt = f"{nom_doss}/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}.txt"
 with open(chemin_txt, "w") as f:
     
     f.write(f"Ft = {ft}\nmu = {mu_final}\nAire_reelle_finale = {A_reel}")
@@ -271,9 +282,9 @@ ax_fx.axhline(y=ft_parseval, color='g', linestyle=':', label="Parseval")
 texte_info = (f"Force normale (Load) : {force_normale:.2e} \n" f"Erreur Relative entre tamaas et carbone: {erreur_relative:.2f} % \n" f"Ft en régime permanent (tamaas) : {historique_ft[-1]:.2e}. \n" f"Erreur Tamaas/Parseval : {err_tp:.2e} % \n" f"Ft (Parseval) : {ft_parseval:.2e} \n"f"Ft(Carbone) : {ft_carbone:.2e}")
 
 #on place la boîte de texte en haut à gauche (axes coords)
-ax_fx.text(0.02, 0.95, texte_info, transform=ax_fx.transAxes, fontsize=10,verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+ax_fx.text(0.4, 0.55, texte_info, transform=ax_fx.transAxes, fontsize=10,verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
 
-ax_fx.set(xlabel="Temps", ylabel="Force de frottement Fx",title=f"Frottement (surface sinusoïdale) (Pas = {pas}, N = {N}, vit= {v_cible}, phase pré-charg = {temps_attente}")
+ax_fx.set(xlabel="Temps", ylabel="Force de frottement Ft",title=f"Frottement (surface aléatoire) (Pas = {pas}, N = {N}, vit= {v_cible}, phase pré-charg = {temps_attente})")
 ax_fx.grid()
 ax_fx.legend(loc='lower right')
 
@@ -283,10 +294,15 @@ ymin, ymax = ax_fx.get_ylim()
 ax_mu.set_ylim(ymin / fn, ymax / fn)
 ax_mu.set_ylabel("Coefficient de frottement $\mu$", color='red')
 
-fig_fx.savefig(f"resultats_rand/courbe_fx_total_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}.png")
+fig_fx.savefig(f"{nom_doss}/courbe_fx_total_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}.png")
 
+# Sauvegarde du pic de frottement pour le graphique de fluage
+pic_frottement = np.max(historique_ft)
+chemin_pic = f"{nom_doss}/pic_frottement_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}.txt"
+with open(chemin_pic, "w") as f:
+    f.write(f"{temps_attente}\t{pic_frottement}\n")
 
-if "snakemake" in sys.modules or len(sys.argv) > 4:
+if "snakemake" in sys.modules or len(sys.argv) > 5:
     # snakemake
     plt.close('all')
 else:
