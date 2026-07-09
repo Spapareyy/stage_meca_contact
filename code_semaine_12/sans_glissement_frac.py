@@ -122,10 +122,18 @@ dx=L/N
 
 #configuration des pas géométriques
 n_steps = 100  # 100 pas entre le début et le temps d'attente 
-t_start = 0.001
+t_start = 1e-6
 t_end = 1000.0
-#on ajoute +1 car on a besoin de N+1 points pour faire N différences (intervalles)
+
+#on calcule le nombre de décades
+nb_decades = np.log10(t_end) - np.log10(t_start)
+
+#résolution constante (25 points par décade)
+n_steps = int(25 * nb_decades)
+
 temps_points = np.geomspace(t_start, t_end, num=n_steps + 1)
+#on ajoute +1 car on a besoin de N+1 points pour faire N différences (intervalles)
+
 
 dS = dx * dx
 historique_A_reel = []
