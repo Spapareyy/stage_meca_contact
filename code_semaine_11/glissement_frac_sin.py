@@ -1,11 +1,11 @@
 import tamaas as tm
 import numpy as np
-
+tm.initialize(8)
 import matplotlib.pyplot as plt
 import sys
 import os
 import tamaas.utils as tmu
-N=200
+N=300
 if len(sys.argv) > 5:
     load = float(sys.argv[1])
     suff_load = sys.argv[1]
@@ -14,7 +14,7 @@ if len(sys.argv) > 5:
     suff_hurst = sys.argv[3]
     pas = int(sys.argv[4])
     suff_pas = sys.argv[4]
-    temps_attente = int(sys.argv[5])
+    temps_attente = float(sys.argv[5])
     suff_temps_attente = sys.argv[5]
     suff_v_cible = f"{v_cible:.2f}"
     if len(sys.argv) > 6:
@@ -26,10 +26,10 @@ if len(sys.argv) > 5:
 else: #si execution via spyder
     import datetime
     temps_attente = 0
-    load = 20#valeur contact complet: 60
+    load = 80 #valeur contact complet: 60
     hurst = 0.7
     v_cible= 4 #pour avoir la meme vitesse peu importe la valeur de N
-    div_temps = 2.0
+    div_temps = 50.0
     pas = int(400)    #changer valeur pour décaler de x pas
     suff_div_temps = str(div_temps)
     suff_load = str(load)
@@ -47,6 +47,9 @@ else:
 os.makedirs(nom_doss, exist_ok=True)
 
 
+# fichier de sauvegarde/checkpoint pour les étapes intermédiaires de la simulation d'évolution sans frottement
+checkpoint_file = f"{nom_doss}/checkpoint_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}.npz"
+
 L =1.
 
 #surface sinusoidale
@@ -58,8 +61,8 @@ xx, yy = np.meshgrid(x_tmp, y_tmp, indexing='ij')
 surface = np.sin(2 * np.pi * 4 * xx / L) * np.sin(2 * np.pi * 4 * yy / L)
 
 #calcul numérique de la pente RMS réelle de la surface sinusoïdale
-k = 2 * np.pi * 4 / L
-rms_slope = k / np.sqrt(2)
+n = 2 * np.pi * 4 / L
+rms_slope = n / np.sqrt(2)
 
 h0 = 1 #c'est la pente RMS visée 
 
@@ -82,29 +85,35 @@ model = tm.Model(tm.model_type.basic_2d, [L, L], [N, N])
 model.E= 1.
 nu=0.5
 model.nu = nu
+
+
 #load*=model.E_star*100/L 
 #on multiplie la force normale par la vraie raideur du materiau pour avoir les bonnes dimensions et on divise par L pour les bonnes dimensions
 # car load est en metres , model E star en Pascals et L en metres
 
+
+#pour un materiau a un temps de relaxation
 #G_i = np.array([3.0])   # si on a k=0.1 , et Einf=1 on a dE=9 et E=3*G avec nu=0.5 donc G=dE/3=3
 #tau_i = np.array([0.1]) # taurelax= k*tau_fluage avec k=0.1 et tau_fluage =1 , taurelax=0.1
 
 
 ##### matériau fractionnaire  #####
 
-alpha = 0.5  # (entre 0 et 1)
-k = 1e-2  #ratio entre la rigidité à long terme (E_inf) et instantanée (E_0)
+alpha = 0.2  # (entre 0 et 1)
+k = 0.1  #ratio entre la rigidité à long terme (E_inf) et instantanée (E_0)
 
 
 #nombre de branches discrètes souhaitées
 N_branches = 30 
 
 #tau et g a utiliser avec le solveur
-tau_i, G_i = tmu.fractional_zener(alpha, k, N_branches)
+tau_i, G_i_brut = tmu.fractional_zener(alpha, k, N_branches)
 
+
+E_branches = G_i_brut
 #print des valeurs générées
 print(f"tau_i ({len(tau_i)} branches) : {tau_i}")
-print(f"G_i : {G_i}")
+print(f"G_i : {E_branches}")
 
 
 if "erreur" in nom_doss:
@@ -113,12 +122,12 @@ if "erreur" in nom_doss:
 dx=L/N
 
 #on adapte le pas de temps en fonction du temps final souhaité en faisant varier div_temps plus haut
-pas_temps = (dx / v_cible) / div_temps
+pas_temps = 0.05 / div_temps
 
 
 solver = tm.MaxwellViscoelastic(model, surface, 1e-9,
                                 time_step=pas_temps,
-                                shear_moduli=G_i,
+                                shear_moduli=E_branches/3.0,
                                 characteristic_times=tau_i)
 
 #solveur
@@ -131,7 +140,6 @@ temps = []
 #on ne s'interesse qu'a la pente selon x
 pente_y, pente_x = np.gradient(surface, dx)
 
-
 h_fft_init = np.fft.rfft2(surface)
 
 #l'axe de défilement dans la boucle est l'axe y (axis=1), on utilise donc qy
@@ -141,10 +149,61 @@ pente_spectrale_init = 1j * qy * h_fft_init
 pente_x = np.fft.irfft2(pente_spectrale_init, s=(N, N))
 
 
+#phase 1 : temps d'attente/fluage (pas de temps variable)
+if temps_attente > 0:
+    #on vérifie si l'état de fluage existe déjà
+    if os.path.exists(checkpoint_file):
+        data = np.load(checkpoint_file)
+        for field in data.files:  #on restaure chaque champ sauvegardé
+            model[field] = data[field]
+    else:
+        n_steps_attente = 100
+        t_start = 1e-4
+        temps_points = np.geomspace(t_start, temps_attente, num=n_steps_attente + 1)
+        
+        for i in range(n_steps_attente):
+            dt_dyn = temps_points[i+1] - temps_points[i]
+            
+            solver = tm.MaxwellViscoelastic(
+                model, surface, 1e-9,
+                time_step=dt_dyn,
+                shear_moduli=E_branches/3.0,
+                characteristic_times=tau_i
+            )
+            state_vars = solver.state_fields
+            
+            #s'il y a deja un etat précédent on le prend en compte
+            if i > 0:
+                for field in state_vars:
+                    state_vars[field][:] = model[field]
+                    
+            solver.solve(load)
+            
+            for field in state_vars:
+                model[field] = state_vars[field]
+        
+        #sauvegarde après la boucle
+        #on extrait les tableaux de chaque champ d'état pour les stocker
+        champs_a_save = {field: np.array(model[field]) for field in state_vars}
+        np.savez(checkpoint_file, **champs_a_save)
+        print(f"État de fluage sauvegardé dans {checkpoint_file}")
+            
+#phase 2 : glissement (pas de temps fixe)
 
-for i in range(temps_attente):
-    solver.solve(load)
-    
+solver = tm.MaxwellViscoelastic(
+    model, surface, 1e-9,
+    time_step=pas_temps,
+    shear_moduli=E_branches/3.0,
+    characteristic_times=tau_i
+)
+
+state_vars = solver.state_fields
+
+if temps_attente > 0:
+    for field in state_vars:
+        state_vars[field][:] = model[field]
+
+
 #on calcule la distance exacte parcourue en un pas de temps 
 #(- car on reculait sur l'axe y avec shift=-1)
 dy_step = -v_cible * pas_temps
@@ -162,7 +221,7 @@ for i in range(pas + 1):
     A_reel = np.sum(model.traction > 0) * dS
     historique_ft.append(ft)
     historique_A_reel.append(A_reel)
-    temps.append(i * pas_temps) # pas * time_step
+    temps.append(temps_attente + i * pas_temps) # pas * time_step + prise en compte du temps d'attente
     if i < pas:
         #décalage spectral de la surface
         surf_fft = np.fft.rfft2(surface)
@@ -231,50 +290,8 @@ with open(chemin_txt, "w") as f:
 
 
 #%%
-####### méthode persson #######
-V = v_cible   #vitesse de glissement (distance d'un pas / temps d'un pas)
-omega = qx * V             #fréquence d'excitation vue par le solide déformable (rad/s)
-Surface_totale = L * L
-
-#calcul de la force de frottement théorique d'apres
-#article de persson "Theory of rubber friction: Nonstationary sliding", 2002
-F_analytique_t = []
-
-for i, t in enumerate(temps):
-    reponse_totale = 0
-    for j in range(len(G_i)):
-        g, tau = G_i[j], tau_i[j]
-        #g correspond a E (inf)- E(0)
-        terme_stationnaire = (g * 1j * omega * tau) / (1 + 1j * omega * tau) #dapres equation 37
-        
-        #cette formule inclut la mémoire de la position initiale (g* oscillation)
-        oscillation = np.exp(-t/tau) * np.exp(-1j * omega * t)
-        reponse_t = terme_stationnaire * (1 - oscillation) + (g * oscillation) #dapres equation 39, g* oscillation est la relaxation de la contrainte initiale
-        # a t=0 on a reponse_t=g
-        reponse_totale += reponse_t  #on additionne les réponses de chaque branche
-    
-    
-    E_perte_t = 2 * np.imag(reponse_totale) / (1 - nu) #on garde uniquement la partie imaginaire 
-    contribution = qx*q_norm * C_q_2D * E_perte_t  #q*cos(phi)= qnorm*(qx/qnorm)= qx
-    integrale_q = np.sum(contribution)*2  #*2 car tamaas calcul le PSD pour la moitié des fréquences
-    
-    #on récupère l'aire réelle mesurée par Tamaas à cet instant précis
-    A_reel_t = historique_A_reel[i]
-    
-    #on calcule le pourcentage de contact, entre 0 et 1
-    P_q_t = A_reel_t / Surface_totale  #comme p_q_t dépend de q et de t on a décidé de pas l'inclure dans l'equation de f_t
-    
-    #on applique la formule de l'équation 18 (avec le 1/2 et cos(0)=1)
-    f_t = 0.5* integrale_q * Surface_totale* P_q_t
-    F_analytique_t.append(f_t)
-
-F_analytique_t = np.array(F_analytique_t)
-
-
-#%%
 
 ##### méthode carbone putignano #####
-k = 1e-2
 tau = 1.0  
 vit = v_cible 
 
@@ -288,9 +305,9 @@ E_inf = model.E  #rigidité à temps infini (relaxée), vaut 1.0 dans le code
 E_complexe = np.full(qy.shape, E_inf, dtype=complex) #grille de la meme taille que les freqs avec des nmbres complexes pour le calcul de E_complexe de chaque branche
 
 #on additionne la contribution de chaque branche de Maxwell
-for j in range(len(G_i)):
+for j in range(len(E_branches)):
     #pour un coefficient de poisson nu=0.5, on a E = 3 * G
-    delta_E_j = G_i[j] * 3.0 
+    delta_E_j = E_branches[j]
     tau_j = tau_i[j]
     
     #formule de la rigidité complexe pour une branche de maxwell
@@ -305,7 +322,10 @@ M_qv = E_inf / E_complexe
 solver_stat = tm.PolonskyKeerRey(model, surface, 1e-9)
 solver_stat.solve(load)
 
+Green_OG = model.operators['westergaard_neumann']['influence'][:].copy()
 #on modifie le G 
+model.operators['westergaard_neumann']['influence'][:] = Green_OG.copy()
+
 Green = model.operators['westergaard_neumann']['influence'][:].copy()
 model.operators['westergaard_neumann']['influence'][:] = Green * M_qv
 
@@ -338,24 +358,44 @@ pente_analytique = np.fft.irfft2(pente_spectrale_fft, s=(N, N))
 ft_parseval = np.sum(p_analytique * pente_analytique) * dS
 print(f"Force  de frottement approximée  : {ft_parseval:.4e}")
 
-
-
 #%%
-#### equation mainardi
+##### solution analytique exacte #####
 
+vit = v_cible
+omega = qy * vit
 
-#matrice green
-G_mainardi = Green * M_qv
-G_mainardi[0, 0] = 1.0
+#paramètres de fluage
+tau_J = tau_i * (k**(-1.0 / alpha))
+J_n = E_branches * k
+J_0 = k 
 
-p_fft_mainardi = h_fft / G_mainardi
-p_fft_mainardi[0, 0] = 0.0  # pression moyenne nulle
+#calcul de J_point(t) 
+#la transformée de Fourier de (J_n/tau_J * exp(-t/tau_J)) est J_n / (1 - i*w*tau_J)
+integrale_Fourier = np.zeros(qy.shape, dtype=complex)
+for j in range(len(J_n)):
+    #intégrale de J_point * exp(i*w*t)
+    #le résultat analytique de cette intégrale pour une exponentielle est :
+    integrale_Fourier += (J_n[j] / tau_J[j]) * (1.0 / (1.0/tau_J[j] + 1j * omega))
 
-p_mainardi_real = np.fft.irfft2(p_fft_mainardi, s=(N, N))
-ft_mainardi = np.sum(p_mainardi_real * pente_analytique) * dS
+#l'équation : G_tilde(q, v) = G(q) * [ J(0) + Intégrale ]
+M_qv_exact = J_0 + integrale_Fourier
 
-print(f"Force de frottement (Mainardi) : {ft_mainardi:.4e}")
+model.operators['westergaard_neumann']['influence'][:] = Green_OG.copy()
+Green = model.operators['westergaard_neumann']['influence'][:].copy()
+G_complexe_exact = Green * M_qv_exact
+G_complexe_exact[0, 0] = 1.0 
 
+#résolution de la pression et calcul de ft
+h_fft = np.fft.rfft2(surface)
+p_fft_exact = h_fft / G_complexe_exact
+p_fft_exact[0, 0] = 0.0 
+
+p_analytique_exact = np.fft.irfft2(p_fft_exact, s=(N, N))
+pente_spectrale_fft = 1j * qy * h_fft
+pente_analytique = np.fft.irfft2(pente_spectrale_fft, s=(N, N))
+
+ft_exact = np.sum(p_analytique_exact * pente_analytique) * dS
+print(f"Force de frottement Analytique exacte : {ft_exact:.4e}")
 #%%
 
 #calcul de l'erreur relative entre tamaas et carbone-putignano
@@ -370,20 +410,23 @@ err_cp=abs(ft_carbone-ft_parseval)/ft_parseval *100
 
 print("erreur tamaas/parseval : ",err_tp,"erreur carbone_parseval : ",err_cp)
 
+
+#calcul de l'erreur relative entre tamaas et solution_exacte
+err_te=abs(historique_ft[-1] -ft_exact)/ft_exact *100
+
 ratio_ft_fn=historique_ft[-1]/force_normale
 
 #tracé de fx et mu
 fig_fx, ax_fx = plt.subplots(figsize=(8, 5))
 ax_fx.plot(temps, historique_ft, 'r-', lw=1.5, label="Simulation Tamaas")
-ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson")
 
 #ajout de l'asymptote sur le graphique
 ax_fx.axhline(y=ft_carbone, color='b', linestyle='-.', label="Carbone-Putignano")
 ax_fx.axhline(y=ft_parseval, color='g', linestyle=':', label="Parseval")
-ax_fx.axhline(y=ft_mainardi, color='grey', linestyle='-', label="Mainardi")
+ax_fx.axhline(y=ft_exact, color='grey', linestyle='-', label="Exacte")
 
 #ajout des infos de force normale et de l'erreur
-texte_info = (f"Force normale (Load) : {force_normale:.2e} \n" f"Erreur Relative entre tamaas et carbone: {erreur_relative:.2f} % \n" f"Ft en régime permanent (tamaas) : {historique_ft[-1]:.2e}. \n" f"Erreur Tamaas/Parseval : {err_tp:.2e} % \n" f"Ft (Parseval) : {ft_parseval:.2e} \n"f"Ft(Carbone) : {ft_carbone:.2e} \n"f"Ft(Mainardi) : {ft_mainardi:.2e}")
+texte_info = (f"Force normale (Load) : {force_normale:.2e} \n" f"Erreur Relative entre tamaas et carbone: {erreur_relative:.2f} % \n" f"Ft en régime permanent (tamaas) : {historique_ft[-1]:.2e}. \n" f"Erreur Tamaas/Parseval : {err_tp:.2e} % \n" f"Ft (Parseval) : {ft_parseval:.2e} \n"f"Ft(Carbone) : {ft_carbone:.2e} \n"f"Ft(Exacte) : {ft_exact:.2e}\n" f"Erreur Tamaas/Exacte : {err_te:.2e} % ")
 
 #on place la boîte de texte en haut à gauche (axes coords)
 ax_fx.text(0.4, 0.55, texte_info, transform=ax_fx.transAxes, fontsize=10,verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
@@ -406,12 +449,12 @@ chemin_pic = f"{nom_doss}/pic_frottement_step_{suff_pas}_load_{suff_load}_H_{suf
 with open(chemin_pic, "w") as f:
     f.write(f"{temps_attente}\t{pic_frottement}\n")
 
-dossier_erreur = "resultat_erreur_tau_diff_sinus_v_08"
-os.makedirs(dossier_erreur, exist_ok=True)
-
-chemin_erreur = f"{dossier_erreur}/erreur_div_{suff_div_temps}.txt"
-with open(chemin_erreur, "w") as f:
-    f.write(f"{div_temps}\t{err_tp}\n")
+if "erreur" in nom_doss:
+    dossier_erreur = "resultat_erreur_tau_diff_sinus_v_40"
+    os.makedirs(dossier_erreur, exist_ok=True)
+    chemin_erreur = f"{dossier_erreur}/erreur_div_{suff_div_temps}.txt"
+    with open(chemin_erreur, "w") as f:
+        f.write(f"{div_temps}\t{err_tp}\n")
     
 if "snakemake" in sys.modules or len(sys.argv) > 5:
     # snakemake
