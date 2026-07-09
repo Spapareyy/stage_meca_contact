@@ -165,8 +165,6 @@ for i in range(n_steps):
     A_reel = np.sum(model.traction > 0) * dS
     historique_A_reel.append(A_reel)
     historique_temps.append(temps_points[i+1])
-    
-    del solver
 
 #%%
 ##### tracé des surfaces  #####
