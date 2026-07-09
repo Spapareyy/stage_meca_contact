@@ -158,12 +158,19 @@ if temps_attente > 0:
             model[field] = data[field]
     else:
         n_steps_attente = 100
-        t_start = 1e-4
+        t_start = 10e-8
+        #on calcule le nombre exact de décades entre le début et la fin
+        nb_decades = np.log10(temps_attente) - np.log10(t_start)
+        
+        # 2. On fixe une résolution constante (ex: 25 points par décade)
+        #on utilise int() car n_steps doit être un nombre entier
+        n_steps_attente = int(25 * nb_decades)
         temps_points = np.geomspace(t_start, temps_attente, num=n_steps_attente + 1)
+       
         
         for i in range(n_steps_attente):
             dt_dyn = temps_points[i+1] - temps_points[i]
-            
+            #on fait varier le pas de temps pour ne pas rater les temps courts
             solver = tm.MaxwellViscoelastic(
                 model, surface, 1e-9,
                 time_step=dt_dyn,
