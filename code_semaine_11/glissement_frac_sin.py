@@ -28,9 +28,9 @@ else: #si execution via spyder
     temps_attente = 0
     load = 80 #valeur contact complet: 60
     hurst = 0.7
-    v_cible= 4 #pour avoir la meme vitesse peu importe la valeur de N
-    div_temps = 50.0
-    pas = int(400)    #changer valeur pour décaler de x pas
+    v_cible= 20 #pour avoir la meme vitesse peu importe la valeur de N
+    div_temps = 5000.0
+    pas = int(12000)    #changer valeur pour décaler de x pas
     suff_div_temps = str(div_temps)
     suff_load = str(load)
     suff_hurst = str(hurst)
@@ -367,16 +367,32 @@ print(f"Force  de frottement approximée  : {ft_parseval:.4e}")
 
 #%%
 ##### solution analytique exacte #####
-
+##basé notamment sur l'article de Zichen et Lucas
+##volution of the contact between rough
+##viscoelastic solids after decreasing loads: memory
+## erasure and monotonic increase
 vit = v_cible
 omega = qy * vit
 
 #paramètres de fluage
+#tau_J correspond a tau_c et tau_i correspond a tau_r
+#alpha correspond a nu
 tau_J = tau_i * (k**(-1.0 / alpha))
+
+
+#k = E_inf/E0    , ici Einf=car model.E=1
+#donc J0=1/E0=k
+
+#Jn=Jinf-J0=1-k   E_branches=E0-Einf=(1-k)/k
 J_n = E_branches * k
 J_0 = k 
 
 #calcul de J_point(t) 
+
+#la fonction de fluage J(t) pour une seule branche s'écrit: J(t)=J_0+J_n*(1-exp(-t/tau_j))
+#pour calculer la réponse en régime permanent on regarde la vitesse de fluage soit J_point
+#la dérivée de J(t) s'ecrit : J_point = J_n/tau_J * exp(-t/tau_J))
+
 #la transformée de Fourier de (J_n/tau_J * exp(-t/tau_J)) est J_n / (1 - i*w*tau_J)
 integrale_Fourier = np.zeros(qy.shape, dtype=complex)
 for j in range(len(J_n)):
