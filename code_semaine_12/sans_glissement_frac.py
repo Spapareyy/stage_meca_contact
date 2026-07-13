@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import sys
 import os
 import tamaas.utils as tmu
-N=512
+N=300
 if len(sys.argv) > 5:
     load = float(sys.argv[1])
     suff_load = sys.argv[1]
@@ -150,7 +150,7 @@ for i in range(n_steps):
         surface, 
         1e-9,
         time_step=dt_dynamique,
-        shear_moduli=G_i,
+        shear_moduli=G_i/3.0,
         characteristic_times=tau_i
     )
     
