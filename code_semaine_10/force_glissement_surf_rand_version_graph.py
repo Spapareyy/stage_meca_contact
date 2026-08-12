@@ -1,10 +1,10 @@
-
 import tamaas as tm
 import numpy as np
 tm.initialize(8)
 import matplotlib.pyplot as plt
 import sys
 import os
+
 N=256
 if len(sys.argv) > 5:
     load = float(sys.argv[1])
@@ -26,9 +26,9 @@ if len(sys.argv) > 5:
 else: #si execution via spyder
     import datetime
     temps_attente = 0
-    load = 15  #valeur contact complet: environ 15
+    load = 28 #valeur contact complet: environ 28
     hurst = 0.7
-    v_cible= 0.4 #pour avoir la meme vitesse peu importe la valeur de N
+    v_cible= 0.07 #pour avoir la meme vitesse peu importe la valeur de N
     div_tau = 50.0
     pas = int(10*div_tau)    #changer valeur pour décaler de x pas
     suff_div_tau = str(div_tau)
@@ -39,35 +39,29 @@ else: #si execution via spyder
     suff_temps_attente = str(temps_attente)
     timestamp = datetime.datetime.now().strftime("%Hh%Mm%Ss")
     suff_load = f"{load}_spyder_{timestamp}"
-
+    
 if len(sys.argv) > 7:
     nom_doss = sys.argv[7]
 else:
-    nom_doss = "full_contact_sin_differentes_vitesse_gradexact"
+    nom_doss = "full_contact_rand_differents_temps"
 os.makedirs(nom_doss, exist_ok=True)
 
 
 L =1.
-
-#surface sinusoidale
-x_tmp = np.linspace(0, L, N, endpoint=False)
-y_tmp = np.linspace(0, L, N, endpoint=False)
-xx, yy = np.meshgrid(x_tmp, y_tmp, indexing='ij')
-
-#surface simple 2D (4 bosses spatiales)
-surface = np.sin(2 * np.pi * 4 * xx / L) * np.sin(2 * np.pi * 4 * yy / L)
-
-#calcul numérique de la pente RMS réelle de la surface sinusoïdale
-k = 2 * np.pi * 4 / L
-rms_slope = k / np.sqrt(2)
-
-h0 = 1 #c'est la pente RMS visée 
-
-#on normalise la surface par sa propre pente, puis on applique h0
-surface = (surface / rms_slope) * h0
-
+spectrum = tm.Isopowerlaw2D()
+spectrum.q0 = 12
+spectrum.q1 = 12
+spectrum.q2 = 60
+spectrum.hurst = hurst
+generator = tm.SurfaceGeneratorFilter2D([N, N])
+generator.spectrum = spectrum
+generator.random_seed = 4
+surface = generator.buildSurface() / spectrum.rmsSlopes()
+h0=1 #ampltiude des bosses
+surface *= h0 
 #load=tm.Statistics2D.computeFullContactPressure(surface)
 x = np.linspace(0, L, N, endpoint=False)
+xx, yy = np.meshgrid(x, x, indexing='ij')
 #calcul du psd
 C_q_2D = tm.Statistics2D.computePowerSpectrum(surface)
 
@@ -82,18 +76,18 @@ model = tm.Model(tm.model_type.basic_2d, [L, L], [N, N])
 model.E= 1.
 nu=0.5
 model.nu = nu
-#load*=model.E_star*10/L 
+#load*=model.E_star*10/L
+
 #on multiplie la force normale par la vraie raideur du materiau pour avoir les bonnes dimensions et on divise par L pour les bonnes dimensions
 # car load est en metres , model E star en Pascals et L en metres
+
 
 G_i = np.array([3.0])   # si on a k=0.1 , et Einf=1 on a dE=9 et E=3*G avec nu=0.5 donc G=dE/3=3
 tau_i = np.array([0.1]) # taurelax= k*tau_fluage avec k=0.1 et tau_fluage =1 , taurelax=0.1
 pas_temps = tau_i[0] / div_tau
-
 if "erreur" in nom_doss:
     pas = int(pas * div_tau)
-
-
+    
 solver = tm.MaxwellViscoelastic(model, surface, 1e-9,
                                 time_step=pas_temps,
                                 shear_moduli=G_i,
@@ -108,7 +102,7 @@ temps = []
 
 #on calcule la pente initiale (gradient selon l'axe x)
 #on ne s'interesse qu'a la pente selon x
-# pente_y, pente_x = np.gradient(surface, dx) bcp moins précis que la fft
+#pente_y, pente_x = np.gradient(surface, dx)
 
 
 h_fft_init = np.fft.rfft2(surface)
@@ -128,7 +122,7 @@ for i in range(temps_attente):
 #(- car on reculait sur l'axe y avec shift=-1)
 dy_step = -v_cible * pas_temps
 
-#on précalcule le déphasage de Fourier (le théorème du retard) une seule fois
+#on précalcule le déphasage de Fourier une seule fois
 phase_shift = np.exp(-1j * qy * dy_step)
 #boucle
 #on boucle exactement 'pas + 1' fois pour s'arrêter sur le pas demandé
@@ -154,26 +148,17 @@ for i in range(pas + 1):
 ##### tracé des surfaces  #####
 fig_def, ax1 = plt.subplots(figsize=(10, 5))
 plt.axvline(x=(-pas/N )%1,ymin=0,ymax=1)
-
+#ces 4 lignes servent a obtenir l'endroit avec la pression la plus élevée 
 y_max = np.argmax(np.max(model.traction, axis=1)) #on prend l'indice de la pression la plus élevée parmi l'ensemble des pressions maximales de chaque ligne
-
-#y_max=128 #ici on choisit n'importe quel endroit si on ne veut pas la pression maximale
-#h_cut : profil de la surface rigide sur la ligne choisie
-#u_cut : déplacement vertical de la surface déformée 
-
 u_tot_2d = model.displacement.copy()
 
-
-u_cut_total = u_tot_2d[y_max, :] #on prend le deplacement de la surface deformee qui correspond a cette pression
-h_cut = surface[y_max, :] #on prend la ligne de la surface rugueuse qui correspond à cette pression
-p_cut = model.traction[y_max, :].copy() #on prend le profil de pression de la ligne qui correspond a cette pression
-offset = np.max(h_cut - u_cut_total) #prend l'ecart le plus grand entre surf rigide et surf deformable
-
-
-u_plot = u_cut_total
+h_cut = surface[y_max, :]  #on prend la ligne de la surface rugueuse qui correspond à cette pression
+p_cut = model.traction[y_max, :]  #on prend le profil de pression de la ligne qui correspond a cette pression
+u_cut = u_tot_2d[y_max, :]  #on prend le deplacement de la surface deformee qui correspond a cette pression
+offset = np.max(h_cut - u_cut)
 
 
-
+u_plot = u_cut
 
 
 ax1.plot(x, h_cut , 'k', label='Solide rigide')
@@ -184,14 +169,13 @@ ax1.set(xlabel="Position x (m)", ylabel="Hauteur (µm)", title=f"Profil de conta
 
 #tracé de la pression
 ax2 = ax1.twinx()
-#ax2.fill_between(x, 0, p_cut, color='green', alpha=0.3, label='Pression')
+#ax2.fill_between(x, 0, p_cut,
                  
-ax2.plot(x,p_cut.real, color='green', alpha=0.3, label='Pression')
+ax2.plot(x,p_cut, color='green', alpha=0.3, label='Pression')
 ax2.set_ylabel("Pression", color='green')
 ax1.grid()
 fig_def.legend(loc='upper right')
 fig_def.savefig(f"{nom_doss}/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}.png")
-
 
 if len(sys.argv) > 3:
     plt.close(fig_def)
@@ -206,10 +190,9 @@ mu_final = ft / fn
 chemin_txt = f"{nom_doss}/deformee_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}.txt"
 with open(chemin_txt, "w") as f:
     
-    f.write(f"Ft = {ft}\nmu = {mu_final}\nAire_reelle_initiale = {historique_A_reel[0]}\nAire_reelle_finale = {A_reel}\n")
-
-
+    f.write(f"Ft = {ft}\nmu = {mu_final}\nAire_reelle_initiale = {historique_A_reel[0]}\nAire_reelle_finale = {A_reel}")
 #%%
+
 ####### méthode persson #######
 V = v_cible   #vitesse de glissement (distance d'un pas / temps d'un pas)
 omega = qx * V             #fréquence d'excitation vue par le solide déformable (rad/s)
@@ -297,14 +280,12 @@ pente_analytique = np.fft.irfft2(pente_spectrale_fft, s=(N, N))
 ft_parseval = np.sum(p_analytique * pente_analytique) * dS
 print(f"Force  de frottement analytique  : {ft_parseval:.4e}")
 
-
-
-
+#%%
 #calcul de l'erreur relative entre tamaas et carbone-putignano
 erreur_relative = abs(historique_ft[-1] - ft_carbone) / ft_carbone * 100
 force_normale = load * L**2 #force normale réelle appliquée
 
-#calcul de l'erreur relative entre tamaas et parseval
+#calcul de l'erreur relative entre tamaas et carbone-putignano
 err_tp=abs(historique_ft[-1]-ft_parseval)/ft_parseval *100
 
 #calcul de l'erreur relative entre parseval et carbone-putignano
@@ -314,49 +295,177 @@ print("erreur tamaas/parseval : ",err_tp,"erreur carbone_parseval : ",err_cp)
 
 ratio_ft_fn=historique_ft[-1]/force_normale
 
-#tracé de fx et mu
+#tracé du graph
 fig_fx, ax_fx = plt.subplots(figsize=(8, 5))
-ax_fx.plot(temps, historique_ft, 'r-', lw=1.5, label="Simulation Tamaas")
-ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson")
 
-#ajout de l'asymptote sur le graphique
-ax_fx.axhline(y=ft_carbone, color='b', linestyle='-.', label="Carbone-Putignano")
-ax_fx.axhline(y=ft_parseval, color='g', linestyle=':', label="Parseval")
+ax_fx.plot(temps, historique_ft, 'r-', lw=1.5, label="Simulation numérique")
+ax_fx.axhline(y=ft_parseval, color='g', linestyle=':', label="Analytique (régime permanent)")
 
-#ajout des infos de force normale et de l'erreur
-texte_info = (f"Force normale (Load) : {force_normale:.2e} \n" f"Erreur Relative entre tamaas et carbone: {erreur_relative:.2f} % \n" f"Ft en régime permanent (tamaas) : {historique_ft[-1]:.2e}. \n" f"Erreur Tamaas/Parseval : {err_tp:.2e} % \n" f"Ft (Parseval) : {ft_parseval:.2e} \n"f"Ft(Carbone) : {ft_carbone:.2e}")
+texte_info = (f"Force normale : {force_normale:.2e} N\n" 
+              f"Erreur numérique / analytique : {err_tp:.2f} %")
 
-#on place la boîte de texte en haut à gauche (axes coords)
-ax_fx.text(0.4, 0.55, texte_info, transform=ax_fx.transAxes, fontsize=10,verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+ax_fx.text(0.4, 0.55, texte_info, transform=ax_fx.transAxes, fontsize=10,
+            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
 
-ax_fx.set(xlabel="Temps", ylabel="Force de frottement Ft",title=f"Frottement (surface sinusoïdale) (Pas = {pas}, N = {N}, vit= {v_cible}, pas_temps = {pas_temps:.4f}, phase pré-charg = {temps_attente})")
+# Noms des axes en gras
+ax_fx.set_xlabel("Temps (s)", fontweight='bold')
+ax_fx.set_ylabel("Force de frottement Ft (N)", fontweight='bold')
+
 ax_fx.grid()
 ax_fx.legend(loc='lower right')
 
-#ajout de mu sur le deuxième axe
 ax_mu = ax_fx.twinx()
 ymin, ymax = ax_fx.get_ylim()
 ax_mu.set_ylim(ymin / fn, ymax / fn)
-ax_mu.set_ylabel("Coefficient de frottement $\mu$", color='red')
+ax_mu.set_ylabel("$\mu$ = $F_t/F_N$", color='red', fontweight='bold')
+
+#chiffres des axes en gras
+for label in ax_fx.get_xticklabels() + ax_fx.get_yticklabels():
+    label.set_fontweight('bold')
+for label in ax_mu.get_yticklabels():
+    label.set_fontweight('bold')
 
 fig_fx.savefig(f"{nom_doss}/courbe_fx_total_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}.png")
 
-# Sauvegarde du pic de frottement pour le graphique de fluage
-pic_frottement = np.max(historique_ft)
-chemin_pic = f"{nom_doss}/pic_frottement_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}.txt"
-with open(chemin_pic, "w") as f:
-    f.write(f"{temps_attente}\t{pic_frottement}\n")
+#%%
 
-dossier_erreur = "resultat_erreur_tau_diff_sinus_v_08"
-os.makedirs(dossier_erreur, exist_ok=True)
+#tracé force de frottement en fonction de la vitesse de glissement
 
-chemin_erreur = f"{dossier_erreur}/erreur_div_{suff_div_tau}.txt"
-with open(chemin_erreur, "w") as f:
-    f.write(f"{div_tau}\t{err_tp}\n")
+#on crée un tableau de 60 vitesses
+vitesses_theoriques = np.logspace(-3, 2, 60)
+ft_theoriques = []
+
+#on utilise la variable 'Green' qui contient la matrice pure (sauvegardée avant Carbone)
+Green_original = Green.copy()
+
+#boucle sur toutes les vitesses pour calculer le régime permanent théorique
+for v_test in vitesses_theoriques:
     
-if "snakemake" in sys.modules or len(sys.argv) > 5:
-    # snakemake
-    plt.close('all')
+    #fréquence d'excitation pour cette vitesse spécifique
+    omega_test = -qy * v_test  
+    
+    #module complexe (avec k=0.1 et tau=1.0)
+    M_qv_test = k + ((1 - k) / (1 - 1j * omega_test * tau))
+    
+    #matrice de Green modifiée pour cette vitesse UNIQUEMENT
+    G_complexe_test = Green_original * M_qv_test
+    G_complexe_test[0, 0] = 1.0 # Évite la division par zéro
+    
+    #calcul de la pression analytique dans l'espace de Fourier
+    p_fft_test = h_fft / G_complexe_test
+    p_fft_test[0, 0] = 0.0 # Annule la pression moyenne
+    
+    #retour dans l'espace réel
+    p_analytique_test = np.fft.irfft2(p_fft_test, s=(N, N))
+    
+    #force de frottement asymptotique (Parseval)
+    ft_test = np.sum(p_analytique_test * pente_analytique) * dS
+    ft_theoriques.append(ft_test)
+
+ft_theoriques = np.array(ft_theoriques)
+
+#on récupère la valeur numérique finale de Tamaas
+ft_numerique_final = historique_ft[-1]
+
+#tracé de la courbe
+fig_cloche, ax_cloche = plt.subplots(figsize=(8, 5))
+ax_cloche.plot(vitesses_theoriques, ft_theoriques, 'b-', lw=2, label="Courbe analytique")
+
+#on place le point rouge en utilisant la vraie valeur numérique Tamaas
+ax_cloche.plot([v_cible], [ft_numerique_final], 'ro', markersize=8, 
+               label=f"Numérique (v={v_cible} m/s, Ft={ft_numerique_final:.3f} N)")
+
+ax_cloche.set_xscale('log')
+ax_cloche.set_xlabel("Vitesse de glissement V (m/s)")
+ax_cloche.set_ylabel("Force de frottement Ft (N)")
+#ax_cloche.set_title("Évolution théorique du frottement en fonction de la vitesse (aléatoire)")
+ax_cloche.grid(True, which="both")
+ax_cloche.legend(loc='center right', fontsize='small')
+
+#sauvegarde de l'image
+fig_cloche.savefig(f"{nom_doss}/courbe_theorique_cloche_V_{suff_v_cible}.png")
+
+if len(sys.argv) > 3:
+    plt.close(fig_cloche)
 else:
-    #spyder
     plt.show()
+
+
+#%%
+#tracé des deux illustrations
+
+# On définit un ratio de 1:1 pour les largeurs des deux subplots
+fig_surf, (ax_2d, ax_1d) = plt.subplots(1, 2, figsize=(12, 5), gridspec_kw={'width_ratios': [1, 1]})
+
+#graph 1
+surf_plot = ax_2d.pcolormesh(xx, yy, surface, cmap='viridis', shading='auto')
+ax_2d.set_xlabel("Position x (m)")
+ax_2d.set_ylabel("Position y (m)")
+ax_2d.set_aspect('equal')
+fig_surf.colorbar(surf_plot, ax=ax_2d, label="Hauteur (m)")
+
+indice_coupe_x = int(N * 0.55)
+x_coupe = x[indice_coupe_x]
+ax_2d.axvline(x=x_coupe, color='red', linestyle='--', linewidth=2, label="Ligne de coupe (axe y)")
+ax_2d.legend(loc="upper right")
+
+#graph 2 (profil)
+profil_1d_y = surface[indice_coupe_x, :]  #coupe du solide rigide
+u_1d_y = u_tot_2d[indice_coupe_x, :]      #coupe du solide déformable 
+
+#tracé de la surface du solide rigide (en noir)
+ax_1d.plot(x, profil_1d_y, 'k-', linewidth=1.5, label='solide rigide')
+
+#tracé de la surface du solide déformable (en bleu)
+ax_1d.plot(x, u_1d_y, 'b-', linewidth=1.5, label="solide déformable à l'état final")
+
+#tracé de l'état initial (z=0)
+ax_1d.axhline(0, color='gray', linestyle='--', label="solide déformable à l'état initial (z=0)")
+
+
+#limites pour l'axe y
+limite_basse = -0.02  
+limite_haute = 0.03   
+ax_1d.fill_between(x, u_1d_y, limite_haute, color='blue', alpha=0.15)
+ax_1d.set_ylim(limite_basse, limite_haute)
+
+#limites pour l'axe x
+limite_gauche = 0.0  
+limite_droite = 1.0  
+ax_1d.set_xlim(limite_gauche, limite_droite)
+
+ax_1d.set_xlabel("Position y (m) : axe du glissement")
+ax_1d.set_ylabel("Hauteur (m)")
+ax_1d.grid(True, linestyle='--', alpha=0.7)
+
+# Ajout de la légende
+ax_1d.legend(loc='lower left', fontsize=9)
+
+
+
+#flèche de glissement
+ax_1d.annotate('', xy=(0.55, 0.8), xytext=(0.85, 0.8),
+               xycoords='axes fraction', textcoords='axes fraction',
+               arrowprops=dict(facecolor='blue', edgecolor='blue', width=1.5, headwidth=6))
+ax_1d.text(0.7, 0.85, 'Glissement du solide rigide', transform=ax_1d.transAxes,
+           ha='center', color="blue", va='bottom', fontsize=10, fontweight='bold')
+
+#flèche de la Force Normale
+ax_1d.annotate('', xy=(0.25, 0.68), xytext=(0.25, 0.88),
+               xycoords='axes fraction', textcoords='axes fraction',
+               arrowprops=dict(facecolor='red', edgecolor='red', width=1.5, headwidth=6))
+ax_1d.text(0.25, 0.9, r'Force Normale $F_N$', transform=ax_1d.transAxes,
+           ha='center', color="red", va='bottom', fontsize=10, fontweight='bold')
+
+plt.tight_layout()
+
+#sauvegarde
+nom_image_surf = f"{nom_doss}/illustration_surf_rand_combinee.png"
+fig_surf.savefig(nom_image_surf, bbox_inches='tight', dpi=300)
+print(f"Image sauvegardée sous : {nom_image_surf}")
+
+if len(sys.argv) > 3:
+    plt.close(fig_surf)
+else:
+    plt.show()
+    

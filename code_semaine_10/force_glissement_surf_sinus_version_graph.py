@@ -299,7 +299,6 @@ print(f"Force  de frottement analytique  : {ft_parseval:.4e}")
 
 
 
-
 #calcul de l'erreur relative entre tamaas et carbone-putignano
 erreur_relative = abs(historique_ft[-1] - ft_carbone) / ft_carbone * 100
 force_normale = load * L**2 #force normale réelle appliquée
@@ -314,49 +313,173 @@ print("erreur tamaas/parseval : ",err_tp,"erreur carbone_parseval : ",err_cp)
 
 ratio_ft_fn=historique_ft[-1]/force_normale
 
-#tracé de fx et mu
+#tracé du graph
 fig_fx, ax_fx = plt.subplots(figsize=(8, 5))
-ax_fx.plot(temps, historique_ft, 'r-', lw=1.5, label="Simulation Tamaas")
-ax_fx.plot(temps, F_analytique_t, 'k--', lw=1.5, label="Théorie Persson")
 
-#ajout de l'asymptote sur le graphique
-ax_fx.axhline(y=ft_carbone, color='b', linestyle='-.', label="Carbone-Putignano")
-ax_fx.axhline(y=ft_parseval, color='g', linestyle=':', label="Parseval")
+ax_fx.plot(temps, historique_ft, 'r-', lw=1.5, label="Simulation numérique")
+ax_fx.axhline(y=ft_parseval, color='g', linestyle=':', label="Analytique (régime permanent)")
 
-#ajout des infos de force normale et de l'erreur
-texte_info = (f"Force normale (Load) : {force_normale:.2e} \n" f"Erreur Relative entre tamaas et carbone: {erreur_relative:.2f} % \n" f"Ft en régime permanent (tamaas) : {historique_ft[-1]:.2e}. \n" f"Erreur Tamaas/Parseval : {err_tp:.2e} % \n" f"Ft (Parseval) : {ft_parseval:.2e} \n"f"Ft(Carbone) : {ft_carbone:.2e}")
+texte_info = (f"Force normale : {force_normale:.2e} N\n" 
+              f"Erreur numérique / analytique : {err_tp:.2f} %")
 
-#on place la boîte de texte en haut à gauche (axes coords)
-ax_fx.text(0.4, 0.55, texte_info, transform=ax_fx.transAxes, fontsize=10,verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+ax_fx.text(0.4, 0.55, texte_info, transform=ax_fx.transAxes, fontsize=10,
+            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
 
-ax_fx.set(xlabel="Temps", ylabel="Force de frottement Ft",title=f"Frottement (surface sinusoïdale) (Pas = {pas}, N = {N}, vit= {v_cible}, pas_temps = {pas_temps:.4f}, phase pré-charg = {temps_attente})")
+#noms des axes en gras
+ax_fx.set_xlabel("Temps (s)", fontweight='bold')
+ax_fx.set_ylabel("Force de frottement Ft (N)", fontweight='bold')
+
+#ax_fx.set(xlabel="Temps (s)", ylabel="Force de frottement Ft (N)",
+#          title=f"Frottement (surface sinusoïdale) (Pas = {pas}, N = {N}, vit= {v_cible} m/s, pas_temps = {pas_temps:.4f} s, phase pré-charg = {temps_attente} s)")
 ax_fx.grid()
 ax_fx.legend(loc='lower right')
 
-#ajout de mu sur le deuxième axe
 ax_mu = ax_fx.twinx()
 ymin, ymax = ax_fx.get_ylim()
 ax_mu.set_ylim(ymin / fn, ymax / fn)
-ax_mu.set_ylabel("Coefficient de frottement $\mu$", color='red')
+ax_mu.set_ylabel("$\mu$ = $F_t/F_N$", color='red', fontweight='bold')
+
+#chiffres des axes en gras
+for label in ax_fx.get_xticklabels() + ax_fx.get_yticklabels():
+    label.set_fontweight('bold')
+for label in ax_mu.get_yticklabels():
+    label.set_fontweight('bold')
 
 fig_fx.savefig(f"{nom_doss}/courbe_fx_total_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}.png")
 
-# Sauvegarde du pic de frottement pour le graphique de fluage
-pic_frottement = np.max(historique_ft)
-chemin_pic = f"{nom_doss}/pic_frottement_step_{suff_pas}_load_{suff_load}_H_{suff_hurst}_V_{suff_v_cible}_ta_{suff_temps_attente}.txt"
-with open(chemin_pic, "w") as f:
-    f.write(f"{temps_attente}\t{pic_frottement}\n")
+#%%
 
-dossier_erreur = "resultat_erreur_tau_diff_sinus_v_08"
-os.makedirs(dossier_erreur, exist_ok=True)
+#tracé froce de frottement analytique vs vitesse de glissement
 
-chemin_erreur = f"{dossier_erreur}/erreur_div_{suff_div_tau}.txt"
-with open(chemin_erreur, "w") as f:
-    f.write(f"{div_tau}\t{err_tp}\n")
+#on crée un tableau de 60 vitesses
+vitesses_theoriques = np.logspace(-3, 2, 60)
+ft_theoriques = []
+
+#boucle sur toutes les vitesses pour calculer le régime permanent théorique
+for v_test in vitesses_theoriques:
     
-if "snakemake" in sys.modules or len(sys.argv) > 5:
-    # snakemake
-    plt.close('all')
+    #fréquence d'excitation pour cette vitesse spécifique
+    omega_test = -qy * v_test  
+    
+    #module complexe (avec k=0.1 et tau=1.0 déjà redéfinis dans la section Carbone)
+    M_qv_test = k + ((1 - k) / (1 - 1j * omega_test * tau))
+    
+    #matrice de Green modifiée pour cette vitesse (la variable 'Green' contient la version originale)
+    G_complexe_test = Green * M_qv_test
+    G_complexe_test[0, 0] = 1.0 # Évite la division par zéro
+    
+    #calcul de la pression analytique dans l'espace de Fourier
+    p_fft_test = h_fft / G_complexe_test
+    p_fft_test[0, 0] = 0.0 #annule la pression moyenne
+    
+    #retour dans l'espace réel
+    p_analytique_test = np.fft.irfft2(p_fft_test, s=(N, N))
+    
+    #force de frottement asymptotique (Parseval)
+    ft_test = np.sum(p_analytique_test * pente_analytique) * dS
+    ft_theoriques.append(ft_test)
+
+ft_theoriques = np.array(ft_theoriques)
+
+#on récupère la valeur numérique finale de la simulation temporelle Tamaas
+ft_numerique_final = historique_ft[-1]
+
+#tracé de la courbe
+fig_cloche, ax_cloche = plt.subplots(figsize=(8, 5))
+ax_cloche.plot(vitesses_theoriques, ft_theoriques, 'b-', lw=2, label="Courbe analytique")
+
+#on place le point rouge en utilisant la vraie valeur numérique Tamaas
+ax_cloche.plot([v_cible], [ft_numerique_final], 'ro', markersize=8, 
+               label=f"Numérique (v={v_cible} m/s, Ft={ft_numerique_final:.3f} N)")
+
+ax_cloche.set_xscale('log')
+ax_cloche.set_xlabel("Vitesse de glissement V (m/s)")
+ax_cloche.set_ylabel("Force de frottement Ft (N)")
+#ax_cloche.set_title("Évolution théorique du frottement en fonction de la vitesse (Sinusoïdale)")
+ax_cloche.grid(True, which="both")
+ax_cloche.legend(loc='center left', fontsize='small')
+
+#sauvegarde de l'image
+fig_cloche.savefig(f"{nom_doss}/courbe_theorique_cloche_V_{suff_v_cible}.png")
+
+if len(sys.argv) > 3:
+    plt.close(fig_cloche)
 else:
-    #spyder
+    plt.show()
+    
+#%%
+#tracé des deux illustrations
+
+fig_surf, (ax_2d, ax_1d) = plt.subplots(1, 2, figsize=(12, 5))
+
+#graph 1
+surf_plot = ax_2d.pcolormesh(xx, yy, surface, cmap='viridis', shading='auto')
+ax_2d.set_xlabel("Position x (m)")
+ax_2d.set_ylabel("Position y (m)")
+ax_2d.set_aspect('equal')
+fig_surf.colorbar(surf_plot, ax=ax_2d, label="Hauteur (m)")
+
+indice_coupe_x = int(N * 0.55)
+x_coupe = x_tmp[indice_coupe_x]
+ax_2d.axvline(x=x_coupe, color='red', linestyle='--', linewidth=2, label="Ligne de coupe (axe y)")
+ax_2d.legend(loc="upper right")
+
+#graph 2 (profil)
+profil_1d_y = surface[indice_coupe_x, :]  #coupe du solide rigide
+u_1d_y = u_tot_2d[indice_coupe_x, :]      #coupe du solide déformable 
+
+#tracé de la surface du solide rigide (en noir)
+ax_1d.plot(y_tmp, profil_1d_y, 'k-', linewidth=1.5, label='solide rigide')
+
+#tracé de la surface du solide déformable (en bleu)
+ax_1d.plot(y_tmp, u_1d_y, 'b-', linewidth=1.5, label="solide déformable à l'état final")
+
+#tracé de l'état initial (z=0)
+ax_1d.axhline(0, color='gray', linestyle='--', label="solide déformable à l'état initial (z=0)")
+
+
+#limites pour l'axe y
+limite_basse = -0.1  
+limite_haute = 0.1   
+ax_1d.fill_between(y_tmp, u_1d_y, limite_haute, color='blue', alpha=0.15)
+ax_1d.set_ylim(limite_basse, limite_haute)
+
+#limites pour l'axe x
+limite_gauche = 0.0  
+limite_droite = 1.0  
+ax_1d.set_xlim(limite_gauche, limite_droite)
+
+ax_1d.set_xlabel("Position y (m) : axe du glissement")
+ax_1d.set_ylabel("Hauteur (m)")
+ax_1d.grid(True, linestyle='--', alpha=0.7)
+
+# Ajout de la légende
+ax_1d.legend(loc='lower left', fontsize=9)
+
+
+
+#flèche de glissement
+ax_1d.annotate('', xy=(0.05, 0.8), xytext=(0.35, 0.8),
+               xycoords='axes fraction', textcoords='axes fraction',
+               arrowprops=dict(facecolor='blue', edgecolor='blue', width=1.5, headwidth=6))
+ax_1d.text(0.25, 0.85, 'Glissement du solide rigide', transform=ax_1d.transAxes,
+           ha='center', color="blue", va='bottom', fontsize=10, fontweight='bold')
+
+#flèche de la Force Normale
+ax_1d.annotate('', xy=(0.55, 0.68), xytext=(0.55, 0.88),
+               xycoords='axes fraction', textcoords='axes fraction',
+               arrowprops=dict(facecolor='red', edgecolor='red', width=1.5, headwidth=6))
+ax_1d.text(0.55, 0.9, r'Force Normale $F_N$', transform=ax_1d.transAxes,
+           ha='center', color="red", va='bottom', fontsize=10, fontweight='bold')
+
+plt.tight_layout()
+
+#sauvegarde
+nom_image_surf = f"{nom_doss}/illustration_surf_sin_combinee.png"
+fig_surf.savefig(nom_image_surf, bbox_inches='tight', dpi=300)
+print(f"Image sauvegardée sous : {nom_image_surf}")
+
+if len(sys.argv) > 3:
+    plt.close(fig_surf)
+else:
     plt.show()

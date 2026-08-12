@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import sys
 import os
 import tamaas.utils as tmu
-N=300
+N=256
 if len(sys.argv) > 5:
     load = float(sys.argv[1])
     suff_load = sys.argv[1]
@@ -28,9 +28,9 @@ else: #si execution via spyder
     temps_attente = 0
     load = 80 #valeur contact complet: 60
     hurst = 0.7
-    v_cible= 20 #pour avoir la meme vitesse peu importe la valeur de N
-    div_temps = 5000.0
-    pas = int(12000)    #changer valeur pour décaler de x pas
+    v_cible= 4 #pour avoir la meme vitesse peu importe la valeur de N
+    div_temps = 10.0
+    pas = int(200)    #changer valeur pour décaler de x pas
     suff_div_temps = str(div_temps)
     suff_load = str(load)
     suff_hurst = str(hurst)
@@ -194,8 +194,23 @@ if temps_attente > 0:
         champs_a_save = {field: np.array(model[field]) for field in state_vars}
         np.savez(checkpoint_file, **champs_a_save)
         print(f"État de fluage sauvegardé dans {checkpoint_file}")
-            
+else:
+    #si temps_attente == 0, on crée quand même le fichier pour snakemake
+    if not os.path.exists(checkpoint_file):
+        np.savez(checkpoint_file, info="no_wait")
+        print(f"Checkpoint vide créé pour snakemake : {checkpoint_file}")        
 #phase 2 : glissement (pas de temps fixe)
+
+pas_temps_souhaite = 0.05 / div_temps
+max_pas_temps_cfl = (dx / 2.0) / v_cible
+pas_temps = min(pas_temps_souhaite, max_pas_temps_cfl)
+
+distance_min = 0.35 
+temps_pour_distance = distance_min / v_cible
+
+#le code choisit le temps le plus long entre 1.5s et le temps nécessaire pour la distance
+duree_glissement_cible = max(1.5, temps_pour_distance) 
+pas = int(duree_glissement_cible / pas_temps)
 
 solver = tm.MaxwellViscoelastic(
     model, surface, 1e-9,
@@ -477,11 +492,75 @@ if "erreur" in nom_doss:
     os.makedirs(dossier_erreur, exist_ok=True)
     chemin_erreur = f"{dossier_erreur}/erreur_div_{suff_div_temps}.txt"
     with open(chemin_erreur, "w") as f:
-        f.write(f"{div_temps}\t{err_tp}\n")
+        f.write(f"{pas_temps}\t{err_tp}\n")
     
 if "snakemake" in sys.modules or len(sys.argv) > 5:
     # snakemake
     plt.close('all')
 else:
     #spyder
+    plt.show()
+#%%
+#tracé frottement/vitesse materiau fractionnaire
+
+#tableau de vitesses (élargi de 10^-4 à 10^4 pour voir toute la cloche)
+vitesses_theoriques = np.logspace(-4, 4, 100)
+ft_theoriques = []
+
+#boucle sur toutes les vitesses pour calculer le régime permanent théorique
+for v_test in vitesses_theoriques:
+    
+    #fréquence d'excitation pour cette vitesse spécifique
+    omega_test = qy * v_test  
+    
+    #intégrale de Fourier du modèle fractionnaire pour la vitesse courante
+    integrale_Fourier_test = np.zeros(qy.shape, dtype=complex)
+    for j in range(len(J_n)):
+        integrale_Fourier_test += (J_n[j] / tau_J[j]) * (1.0 / (1.0/tau_J[j] + 1j * omega_test))
+    
+    M_qv_test = J_0 + integrale_Fourier_test
+    
+    #matrice de Green modifiée pour cette vitesse
+    model.operators['westergaard_neumann']['influence'][:] = Green_OG.copy()
+    Green_test = model.operators['westergaard_neumann']['influence'][:].copy()
+    G_complexe_test = Green_test * M_qv_test
+    G_complexe_test[0, 0] = 1.0  # évite la division par zéro
+    
+    #calcul de la pression analytique dans l'espace de Fourier
+    p_fft_test = h_fft / G_complexe_test
+    p_fft_test[0, 0] = 0.0  # Annule la pression moyenne
+    
+    #retour dans l'espace réel
+    p_analytique_test = np.fft.irfft2(p_fft_test, s=(N, N))
+    
+    #force de frottement asymptotique (Parseval)
+    ft_test = np.sum(p_analytique_test * pente_analytique) * dS
+    ft_theoriques.append(ft_test)
+
+ft_theoriques = np.array(ft_theoriques)
+
+#on récupère la valeur numérique finale de la simulation temporelle Tamaas
+ft_numerique_final = historique_ft[-1]
+
+#tracé de la courbe en cloche
+fig_cloche, ax_cloche = plt.subplots(figsize=(8, 5))
+ax_cloche.plot(vitesses_theoriques, ft_theoriques, 'b-', lw=2, label="Courbe analytique (fractionnaire)")
+
+#on place le point rouge en utilisant la vraie valeur numérique Tamaas
+ax_cloche.plot([v_cible], [ft_numerique_final], 'ro', markersize=8, 
+               label=f"Numérique (v={v_cible} m/s, Ft={ft_numerique_final:.3f} N)")
+
+ax_cloche.set_xscale('log')
+ax_cloche.set_xlabel("Vitesse de glissement V (m/s)")
+ax_cloche.set_ylabel("Force de frottement Ft (N)")
+ax_cloche.set_title("Évolution théorique du frottement en fonction de la vitesse (Matériau fractionnaire)")
+ax_cloche.grid()
+ax_cloche.legend(loc='center left', fontsize='small')
+
+#sauvegarde de l'image
+fig_cloche.savefig(f"{nom_doss}/courbe_theorique_cloche_V_{suff_v_cible}.png")
+
+if len(sys.argv) > 3:
+    plt.close(fig_cloche)
+else:
     plt.show()

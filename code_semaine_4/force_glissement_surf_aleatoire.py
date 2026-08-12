@@ -1,4 +1,5 @@
 import tamaas as tm
+tm.initialize(8)
 import numpy as np
 import matplotlib.pyplot as plt
 import sys

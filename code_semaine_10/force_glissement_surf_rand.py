@@ -1,11 +1,11 @@
 import tamaas as tm
 import numpy as np
-
+tm.initialize(8)
 import matplotlib.pyplot as plt
 import sys
 import os
 
-N=150
+N=256
 if len(sys.argv) > 5:
     load = float(sys.argv[1])
     suff_load = sys.argv[1]
@@ -28,8 +28,8 @@ else: #si execution via spyder
     temps_attente = 0
     load = 28 #valeur contact complet: environ 28
     hurst = 0.7
-    v_cible= 0.05 #pour avoir la meme vitesse peu importe la valeur de N
-    div_tau = 20.0
+    v_cible= 0.07 #pour avoir la meme vitesse peu importe la valeur de N
+    div_tau = 50.0
     pas = int(10*div_tau)    #changer valeur pour décaler de x pas
     suff_div_tau = str(div_tau)
     suff_load = str(load)
@@ -49,8 +49,8 @@ os.makedirs(nom_doss, exist_ok=True)
 
 L =1.
 spectrum = tm.Isopowerlaw2D()
-spectrum.q0 = 5
-spectrum.q1 = 20
+spectrum.q0 = 12
+spectrum.q1 = 12
 spectrum.q2 = 60
 spectrum.hurst = hurst
 generator = tm.SurfaceGeneratorFilter2D([N, N])
@@ -61,6 +61,7 @@ h0=1 #ampltiude des bosses
 surface *= h0 
 #load=tm.Statistics2D.computeFullContactPressure(surface)
 x = np.linspace(0, L, N, endpoint=False)
+xx, yy = np.meshgrid(x, x, indexing='ij')
 #calcul du psd
 C_q_2D = tm.Statistics2D.computePowerSpectrum(surface)
 
@@ -136,20 +137,20 @@ for i in range(pas + 1):
     historique_A_reel.append(A_reel)
     temps.append(i * pas_temps) # pas * time_step
     if i < pas:
-        # Décalage spectral de la surface
-        surf_fft = np.fft.rfft2(surface)
-        surface[:] = np.fft.irfft2(surf_fft * phase_shift, s=(N, N))
-        
-        # Décalage spectral de la pente
-        pente_fft = np.fft.rfft2(pente_x)
-        pente_x[:] = np.fft.irfft2(pente_fft * phase_shift, s=(N, N))
+        #on calcule le déphasage total depuis la position initiale (t=0)
+        #on utilise (i + 1) car c'est le décalage pour le prochain pas à résoudre
+        dephasage_total = np.exp(-1j * qy * (i + 1) * dy_step)
+    
+        #décalage spectral en partant toujours du spectre de référence
+        surface[:] = np.fft.irfft2(h_fft_init * dephasage_total, s=(N, N))
+        pente_x[:] = np.fft.irfft2(pente_spectrale_init * dephasage_total, s=(N, N))
 #%%
 ##### tracé des surfaces  #####
 fig_def, ax1 = plt.subplots(figsize=(10, 5))
 plt.axvline(x=(-pas/N )%1,ymin=0,ymax=1)
 #ces 4 lignes servent a obtenir l'endroit avec la pression la plus élevée 
 y_max = np.argmax(np.max(model.traction, axis=1)) #on prend l'indice de la pression la plus élevée parmi l'ensemble des pressions maximales de chaque ligne
-u_tot_2d = model.displacement
+u_tot_2d = model.displacement.copy()
 
 h_cut = surface[y_max, :]  #on prend la ligne de la surface rugueuse qui correspond à cette pression
 p_cut = model.traction[y_max, :]  #on prend le profil de pression de la ligne qui correspond a cette pression
@@ -278,6 +279,7 @@ pente_analytique = np.fft.irfft2(pente_spectrale_fft, s=(N, N))
 
 ft_parseval = np.sum(p_analytique * pente_analytique) * dS
 print(f"Force  de frottement analytique  : {ft_parseval:.4e}")
+
 
 #%%
 
