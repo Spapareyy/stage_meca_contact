@@ -208,6 +208,7 @@ __marimo__/
 
 # Mes fichiers de résultats personnels
 *.png
+*.pdf
 *.txt
 *.npz
 resultats/
